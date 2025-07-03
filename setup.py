@@ -6,7 +6,10 @@ setup(
     version='0.1.0',
     description='automated flight controls for drone',
     author='Andrew Mahran',
-    install_requires=[],
+    install_requires=[
+        'dronekit',
+        'dronekit-sitl'
+    ],
     setup_requires=['pytest-runner'],
     tests_require=['pytest==4.4.1'],
     test_suite='tests'
