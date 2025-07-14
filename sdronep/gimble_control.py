@@ -12,7 +12,7 @@ pwm = GPIO.PWM(pwm_pin, frequency)  # Create PWM instance
 pwm.start(duty_cycle)  # Start PWM with initial duty cycle
 
 def set_gimbal_angle(angle):
-    dc = 2.5 + (angle / 18)
+    dc = (-2/3) * angle + 120
     pwm.ChangeDutyCycle(dc / 10)
 
 def get_angle(elevation, pos_drone, pos_user):
