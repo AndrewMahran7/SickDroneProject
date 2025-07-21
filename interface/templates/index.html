@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drone UI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body>
+  <div id="video-container">
+    <img id="video-stream" src="http://<your-pi-ip>:8080/?action=stream" alt="Live Drone Video Feed" />
+  </div>
+
+  <div id="controls">
+    <button class="button" onclick="sendHomingCommand()">Return Home</button>
+  </div>
+
+</body>
+</html>
