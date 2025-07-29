@@ -1,19 +1,484 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Drone UI</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  <title>Drone Location Tracker</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f0f0f0;
+    }
+    .container {
+      background-color: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    h2 {
+      color: #555;
+      border-bottom: 2px solid #4CAF50;
+      padding-bottom: 5px;
+    }
+    .section {
+      margin: 30px 0;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background-color: #fafafa;
+    }
+    .controls {
+      text-align: center;
+      margin: 20px 0;
+    }
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 0 10px;
+    }
+    .input-group {
+      margin: 15px 0;
+      text-align: center;
+    }
+    .input-group label {
+      display: inline-block;
+      margin: 0 10px;
+      font-weight: bold;
+    }
+    .input-group input {
+      width: 80px;
+      padding: 8px;
+      margin: 0 5px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .button-group {
+      margin: 15px 0;
+    }
+    #startBtn, #droneStartBtn, #followStartBtn {
+      background-color: #4CAF50;
+      color: white;
+    }
+    #stopBtn, #droneStopBtn, #followStopBtn {
+      background-color: #f44336;
+      color: white;
+    }
+    .home-btn {
+      background-color: #ff9800;
+      color: white;
+      font-weight: bold;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    .status-item {
+      margin: 10px 0;
+      padding: 10px;
+      background-color: white;
+      border-radius: 5px;
+      border-left: 4px solid #4CAF50;
+    }
+    #userStatus, #droneStatus {
+      margin-top: 15px;
+      padding: 15px;
+      border-radius: 5px;
+      text-align: center;
+    }
+    #statusDisplay {
+      background-color: #f9f9f9;
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+    }
+    .status-sending {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .status-stopped {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .status-error {
+      background-color: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeaa7;
+    }
+  </style>
 </head>
 <body>
-  <div id="video-container">
-    <img id="video-stream" src="http://<your-pi-ip>:8080/?action=stream" alt="Live Drone Video Feed" />
+  <div class="container">
+    <h1>Drone Location Tracker</h1>
+    
+    <!-- User Location Controls -->
+    <div class="section">
+      <h2>User Location Tracking</h2>
+      <div class="controls">
+        <button id="startBtn" onclick="startLocationTracking()">Start User Tracking</button>
+        <button id="stopBtn" onclick="stopLocationTracking()" disabled>Stop User Tracking</button>
+      </div>
+      <p id="userStatus">Click "Start User Tracking" to begin sending your location to the drone.</p>
+    </div>
+
+    <!-- Drone Telemetry Controls -->
+    <div class="section">
+      <h2>Drone Telemetry</h2>
+      <div class="controls">
+        <button id="droneStartBtn" onclick="startDroneTracking()">Start Drone Tracking</button>
+        <button id="droneStopBtn" onclick="stopDroneTracking()" disabled>Stop Drone Tracking</button>
+      </div>
+      <p id="droneStatus">Click "Start Drone Tracking" to begin monitoring drone location.</p>
+    </div>
+
+    <!-- Distance and Status Display -->
+    <div class="section">
+      <h2>Live Status</h2>
+      <div id="statusDisplay">
+        <div class="status-item">
+          <strong>User Location:</strong> <span id="userLocation">Not available</span>
+        </div>
+        <div class="status-item">
+          <strong>Drone Location:</strong> <span id="droneLocation">Not available</span>
+        </div>
+        <div class="status-item">
+          <strong>Distance:</strong> <span id="distance">Not calculated</span>
+        </div>
+        <div class="status-item">
+          <strong>Follow Mode:</strong> <span id="followMode">Inactive</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drone Follow Controls -->
+    <div class="section">
+      <h2>Drone Follow Mode</h2>
+      <div class="controls">
+        <div class="input-group">
+          <label for="elevation">Elevation (m):</label>
+          <input type="number" id="elevation" min="5" max="100" value="20">
+          <label for="groundDistance">Ground Distance (m):</label>
+          <input type="number" id="groundDistance" min="5" max="50" value="10">
+        </div>
+        <div class="button-group">
+          <button id="followStartBtn" onclick="startDroneFollow()">Start Following</button>
+          <button id="followStopBtn" onclick="stopDroneFollow()" disabled>Stop Following</button>
+          <button id="homeBtn" onclick="droneHome()" class="home-btn">HOME (Land)</button>
+        </div>
+      </div>
+      <p id="followStatus">Configure elevation and distance, then click "Start Following" to begin autonomous tracking.</p>
+    </div>
   </div>
 
-  <div id="controls">
-    <button class="button" onclick="sendHomingCommand()">Return Home</button>
-  </div>
+  <script>
+    let isUserTracking = false;
+    let isDroneTracking = false;
+    let isDroneFollowing = false;
+    let watchId = null;
+    let intervalId = null;
+    let statusUpdateId = null;
+    let lastKnownPosition = null;
 
+    const userStatus = document.getElementById("userStatus");
+    const droneStatus = document.getElementById("droneStatus");
+    const followStatus = document.getElementById("followStatus");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const droneStartBtn = document.getElementById("droneStartBtn");
+    const droneStopBtn = document.getElementById("droneStopBtn");
+    const followStartBtn = document.getElementById("followStartBtn");
+    const followStopBtn = document.getElementById("followStopBtn");
+    const homeBtn = document.getElementById("homeBtn");
+
+    function updateUserStatus(message, className) {
+      userStatus.textContent = message;
+      userStatus.className = className;
+    }
+
+    function updateDroneStatus(message, className) {
+      droneStatus.textContent = message;
+      droneStatus.className = className;
+    }
+
+    function updateFollowStatus(message, className) {
+      followStatus.textContent = message;
+      followStatus.className = className;
+    }
+
+    function updateLiveStatus() {
+      fetch("http://localhost:5000/status")
+        .then(res => res.json())
+        .then(data => {
+          // Update user location display
+          if (data.user_has_location) {
+            document.getElementById("userLocation").textContent = 
+              `${data.user_location.lat.toFixed(6)}, ${data.user_location.lon.toFixed(6)}`;
+          } else {
+            document.getElementById("userLocation").textContent = "Not available";
+          }
+
+          // Update drone location display
+          if (data.drone_has_location) {
+            document.getElementById("droneLocation").textContent = 
+              `${data.drone_location.lat.toFixed(6)}, ${data.drone_location.lon.toFixed(6)}`;
+          } else {
+            document.getElementById("droneLocation").textContent = "Not available";
+          }
+
+          // Update distance display
+          if (data.user_has_location && data.drone_has_location && data.distance_meters > 0) {
+            document.getElementById("distance").textContent = 
+              `${data.distance_meters}m (${data.distance_feet}ft)`;
+          } else {
+            document.getElementById("distance").textContent = "Not calculated";
+          }
+
+          // Update follow mode display
+          const followModeText = data.follow_mode ? 
+            `Active (${data.target_elevation}m elevation, ${data.target_distance}m distance)` : 
+            "Inactive";
+          document.getElementById("followMode").textContent = followModeText;
+        })
+        .catch(error => {
+          console.error("Error updating status:", error);
+        });
+    }
+
+    function sendLocationToServer(latitude, longitude) {
+      const data = {
+        latitude: latitude,
+        longitude: longitude,
+      };
+
+      fetch("http://localhost:5000/location", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      })
+        .then((res) => res.text())
+        .then((text) => {
+          if (isUserTracking) {
+            updateUserStatus(`User tracking active: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`, "status-sending");
+          }
+        })
+        .catch((error) => {
+          console.error("Error sending location:", error);
+          if (isUserTracking) {
+            updateUserStatus(`Error sending location: ${error.message}`, "status-error");
+          }
+        });
+    }
+
+    function startLocationTracking() {
+      if (!navigator.geolocation) {
+        updateUserStatus("Geolocation is not supported by this browser.", "status-error");
+        return;
+      }
+
+      isUserTracking = true;
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      updateUserStatus("Starting user location tracking...", "status-sending");
+
+      // Watch position for real-time updates
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          lastKnownPosition = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          };
+          sendLocationToServer(lastKnownPosition.latitude, lastKnownPosition.longitude);
+        },
+        (error) => {
+          console.error("Geolocation error:", error);
+          updateUserStatus(`Geolocation error: ${error.message}`, "status-error");
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 5000
+        }
+      );
+
+      // Also send location every 3 seconds using the last known position
+      intervalId = setInterval(() => {
+        if (isUserTracking && lastKnownPosition) {
+          sendLocationToServer(lastKnownPosition.latitude, lastKnownPosition.longitude);
+        }
+      }, 3000);
+    }
+
+    function stopLocationTracking() {
+      isUserTracking = false;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+
+      updateUserStatus("User location tracking stopped.", "status-stopped");
+    }
+
+    function startDroneTracking() {
+      fetch("http://localhost:5000/drone/start", {
+        method: "POST"
+      })
+        .then(res => res.json())
+        .then(data => {
+          isDroneTracking = true;
+          droneStartBtn.disabled = true;
+          droneStopBtn.disabled = false;
+          updateDroneStatus("Drone tracking started - monitoring Pixhawk location", "status-sending");
+        })
+        .catch(error => {
+          console.error("Error starting drone tracking:", error);
+          updateDroneStatus(`Error starting drone tracking: ${error.message}`, "status-error");
+        });
+    }
+
+    function stopDroneTracking() {
+      fetch("http://localhost:5000/drone/stop", {
+        method: "POST"
+      })
+        .then(res => res.json())
+        .then(data => {
+          isDroneTracking = false;
+          droneStartBtn.disabled = false;
+          droneStopBtn.disabled = true;
+          updateDroneStatus("Drone tracking stopped.", "status-stopped");
+        })
+        .catch(error => {
+          console.error("Error stopping drone tracking:", error);
+          updateDroneStatus(`Error stopping drone tracking: ${error.message}`, "status-error");
+        });
+    }
+
+    function startDroneFollow() {
+      const elevation = document.getElementById("elevation").value;
+      const distance = document.getElementById("groundDistance").value;
+
+      if (!elevation || !distance) {
+        updateFollowStatus("Please enter elevation and distance values", "status-error");
+        return;
+      }
+
+      const data = {
+        elevation: parseInt(elevation),
+        distance: parseInt(distance)
+      };
+
+      updateFollowStatus("Starting drone follow mode - taking off...", "status-sending");
+      followStartBtn.disabled = true;
+
+      fetch("http://localhost:5000/drone/follow/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            updateFollowStatus(`Error: ${data.error}`, "status-error");
+            followStartBtn.disabled = false;
+          } else {
+            isDroneFollowing = true;
+            followStopBtn.disabled = false;
+            homeBtn.disabled = false;
+            updateFollowStatus(`Follow mode active - Elevation: ${data.elevation}m, Distance: ${data.distance}m`, "status-sending");
+          }
+        })
+        .catch(error => {
+          console.error("Error starting drone follow:", error);
+          updateFollowStatus(`Error starting follow mode: ${error.message}`, "status-error");
+          followStartBtn.disabled = false;
+        });
+    }
+
+    function stopDroneFollow() {
+      fetch("http://localhost:5000/drone/follow/stop", {
+        method: "POST"
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            updateFollowStatus(`Error: ${data.error}`, "status-error");
+          } else {
+            isDroneFollowing = false;
+            followStartBtn.disabled = false;
+            followStopBtn.disabled = true;
+            updateFollowStatus("Follow mode stopped - drone hovering in place", "status-stopped");
+          }
+        })
+        .catch(error => {
+          console.error("Error stopping drone follow:", error);
+          updateFollowStatus(`Error stopping follow mode: ${error.message}`, "status-error");
+        });
+    }
+
+    function droneHome() {
+      if (confirm("Are you sure you want to land the drone? This will stop all tracking and land immediately.")) {
+        fetch("http://localhost:5000/drone/home", {
+          method: "POST"
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data.error) {
+              updateFollowStatus(`Error: ${data.error}`, "status-error");
+            } else {
+              isDroneFollowing = false;
+              followStartBtn.disabled = false;
+              followStopBtn.disabled = true;
+              homeBtn.disabled = true;
+              updateFollowStatus("Drone landing initiated - homing complete", "status-stopped");
+            }
+          })
+          .catch(error => {
+            console.error("Error landing drone:", error);
+            updateFollowStatus(`Error landing drone: ${error.message}`, "status-error");
+          });
+      }
+    }
+
+    // Start live status updates every 2 seconds
+    statusUpdateId = setInterval(updateLiveStatus, 2000);
+
+    // Handle page unload to stop tracking
+    window.addEventListener('beforeunload', () => {
+      if (isUserTracking) {
+        stopLocationTracking();
+      }
+      if (isDroneTracking) {
+        stopDroneTracking();
+      }
+      if (statusUpdateId) {
+        clearInterval(statusUpdateId);
+      }
+    });
+
+    // Initial status update
+    updateLiveStatus();
+  </script>
 </body>
 </html>

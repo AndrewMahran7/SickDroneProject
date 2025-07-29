@@ -8,7 +8,8 @@ setup(
     author='Andrew Mahran',
     install_requires=[
         'dronekit',
-        'dronekit-sitl'
+        'dronekit-sitl',
+        'requests'
     ],
     setup_requires=['pytest-runner'],
     tests_require=['pytest==4.4.1'],

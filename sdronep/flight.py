@@ -6,8 +6,27 @@ Includes methods for arming, takeoff, landing, and setting flight modes.
 
 from dronekit import connect, VehicleMode, LocationGlobalRelative, mavutil
 import time
+import requests
+import json
 
-vehicle = connect('tcp:127.0.0.1:5760', wait_ready=True)
+vehicle = connect('COM3', wait_ready=True, baud=57600)
+
+def get_location_from_endpoint():
+    """
+    Fetches the current location from the /location endpoint.
+    Returns (lat, lon) tuple or (0, 0) if request fails.
+    """
+    try:
+        response = requests.get('http://localhost:5000/location', timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            return (data['lat'], data['lon'])
+        else:
+            print(f"Failed to get location: HTTP {response.status_code}")
+            return (0, 0)
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching location: {e}")
+        return (0, 0)
 
 def arm_and_takeoff(aTargetAltitude):
     """
@@ -43,47 +62,23 @@ def arm_and_takeoff(aTargetAltitude):
             break
         time.sleep(1)
 
-def reach_coords(coords):
-    a_location = LocationGlobalRelative(coords, 30)
-    vehicle.simple_goto(a_location)
-
-def send_ned_velocity(velocity_x, velocity_y, velocity_z, duration):
-    """
-    Move vehicle in direction based on specified velocity vectors.
-    """
-    msg = vehicle.message_factory.set_position_target_local_ned_encode(
-        0,       # time_boot_ms (not used)
-        0, 0,    # target system, target component
-        mavutil.mavlink.MAV_FRAME_LOCAL_NED, # frame
-        0b0000111111000111, # type_mask (only speeds enabled)
-        0, 0, 0, # x, y, z positions (not used)
-        velocity_x, velocity_y, velocity_z, # x, y, z velocity in m/s
-        0, 0, 0, # x, y, z acceleration (not supported yet, ignored in GCS_Mavlink)
-        0, 0)    # yaw, yaw_rate (not supported yet, ignored in GCS_Mavlink)
-
-
-    # send command to vehicle on 1 Hz cycle
-    for x in range(0,duration):
-        vehicle.send_mavlink(msg)
-        time.sleep(1)
-
-def condition_yaw(heading, relative=False):
-    if relative:
-        is_relative=1 #yaw relative to direction of travel
-    else:
-        is_relative=0 #yaw is an absolute angle
-    # create the CONDITION_YAW command using command_long_encode()
-    msg = vehicle.message_factory.command_long_encode(
-        0, 0,    # target system, target component
-        mavutil.mavlink.MAV_CMD_CONDITION_YAW, #command
-        0, #confirmation
-        heading,    # param 1, yaw in degrees
-        0,          # param 2, yaw speed deg/s
-        1,          # param 3, direction -1 ccw, 1 cw
-        is_relative, # param 4, relative offset 1, absolute angle 0
-        0, 0, 0)    # param 5 ~ 7 not used
-    # send command to vehicle
-    vehicle.send_mavlink(msg)
-
-
 arm_and_takeoff(20)
+
+try: 
+    while True:
+        location = get_location_from_endpoint()
+        print(f"Current target location: {location}")
+        
+        if location != (0, 0):  # Only navigate if we have a valid location
+            vehicle.simple_goto(LocationGlobalRelative(location[0], location[1], 20))
+        else:
+            print("No valid location received, staying in current position")
+        
+        time.sleep(2)  # Wait 2 seconds before fetching location again
+except KeyboardInterrupt:
+    print("Landing...")
+    vehicle.mode = VehicleMode("LAND")
+    time.sleep(5)
+
+vehicle.close()
+print("Vehicle connection closed.")
