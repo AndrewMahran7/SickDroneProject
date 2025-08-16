@@ -1,236 +1,547 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Drone Location Tracker</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 1000px;
-    }
-  </style>
-    <div class="section">
-      <h2>Drone Follow Mode</h2>
-      <div class="controls">
-        <div class="input-group">
-          <label for="elevation">Elevation (m):</label>
-          <input type="number" id="elevation" min="5" max="100" value="20">
-          <label for="groundDistance">Ground Distance (m):</label>
-          <input type="number" id="groundDistance" min="5" max="50" value="10">
-        </div>
-        <div class="button-group">
-          <button id="followStartBtn" onclick="startDroneFollow()">Start Following</button>
-          <button id="followStopBtn" onclick="stopDroneFollow()" disabled>Stop Following</button>
-          <button id="homeBtn" onclick="droneHome()" class="home-btn">🏠 HOME (Land)</button>
-        </div>
-      </div>
-      <p id="followStatus">Configure elevation and distance, then click "Start Following" to begin autonomous tracking.</p>
-    </div>
-
-    <!-- Basic Drone Controls -->
-    <div class="section">
-      <h2>Basic Drone Controls</h2>
-      <div class="controls">
-        <div class="button-group">
-          <button id="takeoffBtn" onclick="droneTakeoff()" class="takeoff-btn">🚁 TAKEOFF (5 feet)</button>
-          <button id="landBtn" onclick="droneLand()" class="land-btn">🛬 LAND</button>
-        </div>
-      </div>
-      <p id="basicControlStatus">Use these controls for basic takeoff and landing operations.</p>
-    </div>
-
-    <!-- System Logs -->
-    <div class="section">
-      <h2>System Logs</h2>
-      <div class="controls">
-        <div class="button-group">
-          <button id="clearLogsBtn" onclick="clearSystemLogs()" class="clear-btn">🗑️ Clear Logs</button>
-          <label>
-            <input type="checkbox" id="autoScrollLogs" checked> Auto-scroll logs
-          </label>
-        </div>
-      </div>
-      <div id="logDisplay" class="log-display">
-        <div class="log-message">System ready - logs will appear here...</div>
-      </div>
-    </div>
-  </div>
 
   <style>
+    /* Reset and Base Styles */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
     body {
-      font-family: Arial, sans-serif;
-      max-width: 1000px;
-      margin: 0 auto;
-      padding: 20px;
-      background-color: #f0f0f0;
-    }
-    .container {
-      background-color: white;
-      padding: 30px;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
-    h1 {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: #333;
-      text-align: center;
-      margin-bottom: 30px;
+      min-height: 100vh;
+      padding: 10px;
     }
-    h2 {
-      color: #555;
-      border-bottom: 2px solid #4CAF50;
-      padding-bottom: 5px;
-    }
-    .section {
-      margin: 30px 0;
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
       padding: 20px;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      background-color: #fafafa;
+      margin-bottom: 20px;
     }
+    
+    h1 {
+      text-align: center;
+      color: #2c3e50;
+      font-size: 2rem;
+      margin-bottom: 30px;
+      font-weight: 700;
+    }
+    
+    h2 {
+      color: #34495e;
+      font-size: 1.3rem;
+      margin-bottom: 15px;
+      border-left: 4px solid #3498db;
+      padding-left: 15px;
+      font-weight: 600;
+    }
+    
+    /* Section Styles */
+    .section {
+      background: #f8f9fa;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid #e9ecef;
+    }
+    
     .controls {
-      text-align: center;
-      margin: 20px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      align-items: center;
     }
-    button {
-      padding: 12px 24px;
-      font-size: 16px;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      margin: 0 10px;
-    }
+    
+    /* Input Styles */
     .input-group {
-      margin: 15px 0;
-      text-align: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 15px;
     }
+    
     .input-group label {
-      display: inline-block;
-      margin: 0 10px;
-      font-weight: bold;
+      font-weight: 600;
+      color: #2c3e50;
+      font-size: 0.95rem;
     }
-    .input-group input {
+    
+    .input-group input[type="number"] {
       width: 80px;
-      padding: 8px;
-      margin: 0 5px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
+      padding: 10px 12px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 1rem;
       text-align: center;
+      transition: all 0.3s ease;
     }
+    
+    .input-group input[type="number"]:focus {
+      outline: none;
+      border-color: #3498db;
+      box-shadow: 0 0 10px rgba(52, 152, 219, 0.2);
+    }
+    
+    .input-group input[type="checkbox"] {
+      transform: scale(1.2);
+      margin-right: 8px;
+    }
+    
+    /* Button Styles */
     .button-group {
-      margin: 15px 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
     }
-    #startBtn, #droneStartBtn, #followStartBtn {
-      background-color: #4CAF50;
-      color: white;
+    
+    button {
+      padding: 12px 20px;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      min-width: 140px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
-    #stopBtn, #droneStopBtn, #followStopBtn {
-      background-color: #f44336;
-      color: white;
+    
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0,0,0,0.2);
     }
-    .home-btn {
-      background-color: #ff9800;
-      color: white;
-      font-weight: bold;
+    
+    button:active {
+      transform: translateY(0);
     }
-    .takeoff-btn {
-      background-color: #2196F3;
-      color: white;
-      font-weight: bold;
-    }
-    .land-btn {
-      background-color: #9C27B0;
-      color: white;
-      font-weight: bold;
-    }
-    .clear-btn {
-      background-color: #FF5722;
-      color: white;
-      font-weight: bold;
-    }
+    
     button:disabled {
-      background-color: #cccccc;
+      background-color: #bdc3c7 !important;
       cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
     }
+    
+    /* Button Color Schemes */
+    #startBtn, #droneStartBtn, #followStartBtn {
+      background: linear-gradient(45deg, #27ae60, #2ecc71);
+      color: white;
+    }
+    
+    #stopBtn, #droneStopBtn, #followStopBtn {
+      background: linear-gradient(45deg, #e74c3c, #c0392b);
+      color: white;
+    }
+    
+    .home-btn {
+      background: linear-gradient(45deg, #f39c12, #e67e22);
+      color: white;
+    }
+    
+    .takeoff-btn {
+      background: linear-gradient(45deg, #3498db, #2980b9);
+      color: white;
+    }
+    
+    .land-btn {
+      background: linear-gradient(45deg, #9b59b6, #8e44ad);
+      color: white;
+    }
+    
+    .clear-btn {
+      background: linear-gradient(45deg, #e74c3c, #c0392b);
+      color: white;
+    }
+    
+    /* Status Displays */
+    .status-item {
+      background: white;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      border-left: 4px solid #3498db;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    
+    .status-item strong {
+      color: #2c3e50;
+      display: inline-block;
+      min-width: 120px;
+    }
+    
+    #statusDisplay {
+      background: #ecf0f1;
+      padding: 20px;
+      border-radius: 12px;
+      border: 1px solid #bdc3c7;
+    }
+    
+    #userStatus, #droneStatus, #followStatus, #basicControlStatus {
+      margin-top: 15px;
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+      font-weight: 600;
+    }
+    
+    /* Status Message Styles */
+    .status-sending {
+      background-color: #d5f4e6;
+      color: #27ae60;
+      border: 2px solid #2ecc71;
+    }
+    
+    .status-stopped {
+      background-color: #fadbd8;
+      color: #e74c3c;
+      border: 2px solid #c0392b;
+    }
+    
+    .status-error {
+      background-color: #fdeaa7;
+      color: #f39c12;
+      border: 2px solid #e67e22;
+    }
+    
+    /* Log Display */
     .log-display {
       max-height: 300px;
       overflow-y: auto;
-      background-color: #1e1e1e;
-      color: #ffffff;
+      background: #1a1a1a;
+      border-radius: 8px;
       padding: 15px;
-      border-radius: 5px;
-      font-family: 'Consolas', 'Monaco', monospace;
-      font-size: 12px;
-      border: 1px solid #333;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      font-size: 0.85rem;
+      border: 2px solid #333;
     }
+    
     .log-message {
-      margin: 2px 0;
+      color: #e8e8e8;
+      margin: 3px 0;
       padding: 2px 0;
       word-wrap: break-word;
+      line-height: 1.4;
     }
-    .log-message.INFO {
-      color: #4CAF50;
+    
+    .log-message.INFO { color: #2ecc71; }
+    .log-message.WARNING { color: #f39c12; }
+    .log-message.ERROR { color: #e74c3c; }
+    .log-message.SUCCESS { color: #00e676; }
+    
+    .log-message.DRONE { border-left: 3px solid #3498db; padding-left: 8px; }
+    .log-message.FOLLOW { border-left: 3px solid #9b59b6; padding-left: 8px; }
+    .log-message.GIMBAL { border-left: 3px solid #f39c12; padding-left: 8px; }
+    .log-message.USER { border-left: 3px solid #2ecc71; padding-left: 8px; }
+    .log-message.SYSTEM { border-left: 3px solid #95a5a6; padding-left: 8px; }
+    
+    /* Camera Interface Styles */
+    .camera-container {
+      position: relative;
+      max-width: 800px;
+      margin: 20px auto;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
     }
-    .log-message.WARNING {
-      color: #FF9800;
+
+    #cameraFeed {
+      width: 100%;
+      height: auto;
+      display: block;
     }
-    .log-message.ERROR {
-      color: #F44336;
-    }
-    .log-message.SUCCESS {
-      color: #00E676;
-    }
-    .log-message.DRONE {
-      border-left: 3px solid #2196F3;
-      padding-left: 8px;
-    }
-    .log-message.FOLLOW {
-      border-left: 3px solid #9C27B0;
-      padding-left: 8px;
-    }
-    .log-message.GIMBAL {
-      border-left: 3px solid #FF9800;
-      padding-left: 8px;
-    }
-    .log-message.USER {
-      border-left: 3px solid #4CAF50;
-      padding-left: 8px;
-    }
-    .log-message.SYSTEM {
-      border-left: 3px solid #607D8B;
-      padding-left: 8px;
-    }
-    .status-item {
-      margin: 10px 0;
-      padding: 10px;
-      background-color: white;
-      border-radius: 5px;
-      border-left: 4px solid #4CAF50;
-    }
-    #userStatus, #droneStatus {
-      margin-top: 15px;
-      padding: 15px;
-      border-radius: 5px;
+
+    .camera-placeholder {
+      padding: 80px 20px;
       text-align: center;
+      color: #666;
+      font-size: 16px;
     }
-    #statusDisplay {
-      background-color: #f9f9f9;
-      padding: 20px;
+
+    .detection-status {
+      margin: 20px 0;
+      padding: 15px;
       border-radius: 8px;
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+    }
+
+    .status-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: white;
+      border-radius: 5px;
       border: 1px solid #ddd;
     }
-    .status-sending {
-      background-color: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
+
+    .person-list {
+      margin: 15px 0;
+      max-height: 200px;
+      overflow-y: auto;
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 10px;
     }
-    .status-stopped {
-      background-color: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
+
+    .person-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      margin: 8px 0;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: white;
+      transition: all 0.3s ease;
     }
-    .status-error {
-      background-color: #fff3cd;
-      color: #856404;
-      border: 1px solid #ffeaa7;
+
+    .person-item:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .person-item.locked {
+      border-color: #e74c3c;
+      background: #fdedec;
+    }
+
+    .person-item .person-info {
+      font-weight: 600;
+      color: #2c3e50;
+    }
+
+    .person-item .lock-btn {
+      padding: 6px 12px;
+      font-size: 0.9rem;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .person-item .lock-btn.unlock {
+      background: #e74c3c;
+      color: white;
+    }
+
+    .person-item .lock-btn.lock {
+      background: #27ae60;
+      color: white;
+    }
+
+    .tracking-controls {
+      margin: 20px 0;
+      padding: 15px;
+      border-radius: 8px;
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+    }
+
+    .tracking-info {
+      margin-top: 15px;
+      padding: 12px;
+      background: #e3f2fd;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #1565c0;
+    }
+
+    #cameraStatus {
+      margin-top: 15px;
+      padding: 12px;
+      text-align: center;
+      font-style: italic;
+      color: #666;
+    }
+    
+    /* Mobile Responsiveness */
+    @media (max-width: 768px) {
+      body {
+        padding: 5px;
+      }
+      
+      .container {
+        padding: 15px;
+        border-radius: 10px;
+      }
+      
+      h1 {
+        font-size: 1.6rem;
+        margin-bottom: 20px;
+      }
+      
+      h2 {
+        font-size: 1.1rem;
+        margin-bottom: 12px;
+      }
+      
+      .section {
+        padding: 15px;
+        margin-bottom: 15px;
+      }
+      
+      .input-group {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+      }
+      
+      .input-group label {
+        font-size: 0.9rem;
+      }
+      
+      .input-group input[type="number"] {
+        width: 100px;
+        font-size: 1.1rem;
+        padding: 12px;
+      }
+      
+      .button-group {
+        flex-direction: column;
+        width: 100%;
+      }
+      
+      button {
+        width: 100%;
+        min-width: unset;
+        padding: 15px 20px;
+        font-size: 1.1rem;
+      }
+      
+      .status-item strong {
+        min-width: unset;
+        display: block;
+        margin-bottom: 5px;
+      }
+      
+      .log-display {
+        font-size: 0.8rem;
+        max-height: 250px;
+      }
+      
+      .camera-container {
+        max-width: 100%;
+        margin: 15px 0;
+      }
+      
+      .camera-placeholder {
+        padding: 60px 15px;
+        font-size: 14px;
+      }
+      
+      .status-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      
+      .status-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+      }
+      
+      .person-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      
+      .person-item .lock-btn {
+        align-self: flex-end;
+      }
+    }
+    
+    /* Small Phone Responsiveness */
+    @media (max-width: 480px) {
+      .container {
+        padding: 10px;
+      }
+      
+      h1 {
+        font-size: 1.4rem;
+      }
+      
+      h2 {
+        font-size: 1rem;
+        padding-left: 10px;
+      }
+      
+      .section {
+        padding: 12px;
+      }
+      
+      button {
+        padding: 14px 16px;
+        font-size: 1rem;
+      }
+      
+      .input-group input[type="number"] {
+        width: 90px;
+      }
+    }
+    
+    /* Large Desktop Responsiveness */
+    @media (min-width: 1200px) {
+      .container {
+        padding: 30px;
+      }
+      
+      h1 {
+        font-size: 2.4rem;
+      }
+      
+      .section {
+        padding: 25px;
+      }
+      
+      .input-group {
+        flex-direction: row;
+      }
+      
+      .button-group {
+        flex-direction: row;
+      }
+      
+      button {
+        min-width: 160px;
+      }
+    }
+    
+    /* Landscape Orientation on Mobile */
+    @media (max-width: 768px) and (orientation: landscape) {
+      .button-group {
+        flex-direction: row;
+        flex-wrap: wrap;
+      }
+      
+      button {
+        flex: 1;
+        min-width: 120px;
+        max-width: 200px;
+      }
     }
   </style>
 </head>
@@ -295,6 +606,89 @@
       </div>
       <p id="followStatus">Configure elevation and distance, then click "Start Following" to begin autonomous tracking.</p>
     </div>
+
+    <!-- Human Detection & Tracking -->
+    <div class="section">
+      <h2>📹 Human Detection & Tracking</h2>
+      
+      <!-- Camera Controls -->
+      <div class="controls">
+        <div class="button-group">
+          <button id="startCameraBtn" onclick="startCamera()">📹 Start Camera</button>
+          <button id="stopCameraBtn" onclick="stopCamera()" disabled>⏹️ Stop Camera</button>
+          <button id="toggleBoxesBtn" onclick="toggleBoundingBoxes()">👁️ Toggle Boxes</button>
+        </div>
+      </div>
+      
+      <!-- Live Camera Feed -->
+      <div class="camera-container">
+        <img id="cameraFeed" src="" alt="Camera feed will appear here" style="display: none;">
+        <div id="cameraPlaceholder" class="camera-placeholder">
+          <p>📷 Click "Start Camera" to begin live feed</p>
+        </div>
+      </div>
+      
+      <!-- Detection Status -->
+      <div class="detection-status">
+        <div class="status-grid">
+          <div class="status-info">
+            <strong>Humans Detected:</strong> <span id="detectionCount">0</span>
+          </div>
+          <div class="status-info">
+            <strong>Locked Person:</strong> <span id="lockedPerson">None</span>
+          </div>
+          <div class="status-info">
+            <strong>Bounding Boxes:</strong> <span id="boxStatus">ON</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Person Selection -->
+      <div id="personList" class="person-list">
+        <p>No persons detected</p>
+      </div>
+      
+      <!-- Drone Tracking Controls -->
+      <div class="tracking-controls">
+        <div class="button-group">
+          <button id="unlockPersonBtn" onclick="unlockPerson()" disabled>🔓 Unlock Person</button>
+          <button id="trackPersonBtn" onclick="trackPersonWithDrone()" disabled>🎯 Center Person with Drone</button>
+        </div>
+        <div id="trackingInfo" class="tracking-info">
+          <p>Lock onto a person to enable drone tracking</p>
+        </div>
+      </div>
+      
+      <p id="cameraStatus">Camera controls for human detection and tracking integration.</p>
+    </div>
+
+    <!-- Basic Drone Controls -->
+    <div class="section">
+      <h2>Basic Drone Controls</h2>
+      <div class="controls">
+        <div class="button-group">
+          <button id="takeoffBtn" onclick="droneTakeoff()" class="takeoff-btn">🚁 TAKEOFF (5 feet)</button>
+          <button id="landBtn" onclick="droneLand()" class="land-btn">🛬 LAND</button>
+        </div>
+      </div>
+      <p id="basicControlStatus">Use these controls for basic takeoff and landing operations.</p>
+    </div>
+
+    <!-- System Logs -->
+    <div class="section">
+      <h2>System Logs</h2>
+      <div class="controls">
+        <div class="button-group">
+          <button id="clearLogsBtn" onclick="clearSystemLogs()" class="clear-btn">🗑️ Clear Logs</button>
+          <label>
+            <input type="checkbox" id="autoScrollLogs" checked> Auto-scroll logs
+          </label>
+        </div>
+      </div>
+      <div id="logDisplay" class="log-display">
+        <div class="log-message">System ready - logs will appear here...</div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -306,6 +700,11 @@
     let statusUpdateId = null;
     let logUpdateId = null;
     let lastKnownPosition = null;
+    
+    // Camera variables
+    let cameraActive = false;
+    let detectionInterval = null;
+    let cameraFeedInterval = null;
 
     const userStatus = document.getElementById("userStatus");
     const droneStatus = document.getElementById("droneStatus");
@@ -323,6 +722,21 @@
     const clearLogsBtn = document.getElementById("clearLogsBtn");
     const logDisplay = document.getElementById("logDisplay");
     const autoScrollLogs = document.getElementById("autoScrollLogs");
+    
+    // Camera elements
+    const startCameraBtn = document.getElementById("startCameraBtn");
+    const stopCameraBtn = document.getElementById("stopCameraBtn");
+    const toggleBoxesBtn = document.getElementById("toggleBoxesBtn");
+    const cameraFeed = document.getElementById("cameraFeed");
+    const cameraPlaceholder = document.getElementById("cameraPlaceholder");
+    const detectionCount = document.getElementById("detectionCount");
+    const lockedPerson = document.getElementById("lockedPerson");
+    const boxStatus = document.getElementById("boxStatus");
+    const personList = document.getElementById("personList");
+    const unlockPersonBtn = document.getElementById("unlockPersonBtn");
+    const trackPersonBtn = document.getElementById("trackPersonBtn");
+    const trackingInfo = document.getElementById("trackingInfo");
+    const cameraStatus = document.getElementById("cameraStatus");
 
     function updateUserStatus(message, className) {
       userStatus.textContent = message;
@@ -421,6 +835,187 @@
             console.error("Error clearing logs:", error);
           });
       }
+    }
+
+    // Camera control functions
+    function startCamera() {
+      fetch('http://localhost:5000/camera/start', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            alert('Error starting camera: ' + data.error);
+            cameraStatus.textContent = 'Failed to start camera: ' + data.error;
+            cameraStatus.className = 'status-error';
+          } else {
+            cameraActive = true;
+            startCameraBtn.disabled = true;
+            stopCameraBtn.disabled = false;
+            cameraPlaceholder.style.display = 'none';
+            cameraFeed.style.display = 'block';
+            
+            // Start camera feed
+            startCameraFeed();
+            
+            // Start detection updates
+            startDetectionUpdates();
+            
+            cameraStatus.textContent = 'Camera started successfully - live feed active';
+            cameraStatus.className = 'status-sending';
+            console.log('Camera started successfully');
+          }
+        })
+        .catch(error => {
+          console.error('Error starting camera:', error);
+          alert('Failed to start camera');
+          cameraStatus.textContent = 'Failed to start camera';
+          cameraStatus.className = 'status-error';
+        });
+    }
+
+    function stopCamera() {
+      fetch('http://localhost:5000/camera/stop', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          cameraActive = false;
+          startCameraBtn.disabled = false;
+          stopCameraBtn.disabled = true;
+          cameraFeed.style.display = 'none';
+          cameraPlaceholder.style.display = 'block';
+          
+          // Stop intervals
+          if (cameraFeedInterval) clearInterval(cameraFeedInterval);
+          if (detectionInterval) clearInterval(detectionInterval);
+          
+          // Reset UI
+          updateDetectionUI({ detections: [], locked_person: null, show_boxes: true });
+          
+          cameraStatus.textContent = 'Camera stopped';
+          cameraStatus.className = 'status-stopped';
+          console.log('Camera stopped');
+        })
+        .catch(error => {
+          console.error('Error stopping camera:', error);
+          cameraStatus.textContent = 'Error stopping camera';
+          cameraStatus.className = 'status-error';
+        });
+    }
+
+    function startCameraFeed() {
+      cameraFeedInterval = setInterval(() => {
+        if (cameraActive) {
+          fetch('http://localhost:5000/camera/feed')
+            .then(response => response.text())
+            .then(data => {
+              if (data.startsWith('data:image/jpeg;base64,') && data.length > 30) {
+                cameraFeed.src = data;
+              }
+            })
+            .catch(error => console.error('Error getting camera feed:', error));
+        }
+      }, 100); // 10 FPS for web display
+    }
+
+    function startDetectionUpdates() {
+      detectionInterval = setInterval(() => {
+        if (cameraActive) {
+          fetch('http://localhost:5000/camera/detections')
+            .then(response => response.json())
+            .then(data => {
+              updateDetectionUI(data);
+            })
+            .catch(error => console.error('Error getting detections:', error));
+        }
+      }, 500); // Update every 500ms
+    }
+
+    function updateDetectionUI(data) {
+      // Update detection count
+      detectionCount.textContent = data.detections.length;
+      
+      // Update locked person
+      lockedPerson.textContent = 
+        data.locked_person !== null ? `Person ${data.locked_person}` : 'None';
+      
+      // Update bounding box status
+      boxStatus.textContent = data.show_boxes ? 'ON' : 'OFF';
+      
+      // Update person list
+      if (data.detections.length === 0) {
+        personList.innerHTML = '<p>No persons detected</p>';
+      } else {
+        personList.innerHTML = data.detections.map(person => `
+          <div class="person-item ${data.locked_person === person.id ? 'locked' : ''}">
+            <div class="person-info">Person ${person.id} (${(person.confidence * 100).toFixed(1)}%)</div>
+            <button onclick="lockPerson(${person.id})" class="lock-btn ${data.locked_person === person.id ? 'unlock' : 'lock'}">
+              ${data.locked_person === person.id ? '🔒 Locked' : '🔓 Lock'}
+            </button>
+          </div>
+        `).join('');
+      }
+      
+      // Enable/disable controls based on locked person
+      const hasLockedPerson = data.locked_person !== null;
+      unlockPersonBtn.disabled = !hasLockedPerson;
+      trackPersonBtn.disabled = !hasLockedPerson;
+      
+      // Update tracking info
+      if (hasLockedPerson) {
+        trackingInfo.innerHTML = `<p>✅ Tracking Person ${data.locked_person}. Click "Center Person with Drone" to adjust drone position.</p>`;
+      } else {
+        trackingInfo.innerHTML = '<p>💡 Lock onto a person to enable drone tracking</p>';
+      }
+    }
+
+    function lockPerson(personId) {
+      fetch(`http://localhost:5000/camera/lock/${personId}`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            alert('Error locking person: ' + data.error);
+          } else {
+            console.log(`Locked onto person ${personId}`);
+          }
+        })
+        .catch(error => console.error('Error locking person:', error));
+    }
+
+    function unlockPerson() {
+      fetch('http://localhost:5000/camera/unlock', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          console.log('Unlocked from person');
+        })
+        .catch(error => console.error('Error unlocking person:', error));
+    }
+
+    function toggleBoundingBoxes() {
+      fetch('http://localhost:5000/camera/toggle_boxes', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          console.log('Bounding boxes toggled:', data.show_boxes);
+        })
+        .catch(error => console.error('Error toggling boxes:', error));
+    }
+
+    function trackPersonWithDrone() {
+      fetch('http://localhost:5000/drone/track_person', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            alert('Error tracking person: ' + data.error);
+          } else {
+            console.log('Drone tracking adjustment:', data.adjustments);
+            // Show feedback in tracking info
+            const adj = data.adjustments;
+            trackingInfo.innerHTML = `
+              <p>🎯 TESTING MODE: Calculated adjustments</p>
+              <p>Yaw: ${adj.yaw_adjustment?.toFixed(1) || 0}°, Pitch: ${adj.pitch_adjustment?.toFixed(1) || 0}°</p>
+              <p>Person center: ${adj.person_center ? `(${adj.person_center[0]}, ${adj.person_center[1]})` : 'N/A'}</p>
+              <p>Frame center: ${adj.frame_center ? `(${adj.frame_center[0]}, ${adj.frame_center[1]})` : 'N/A'}</p>
+            `;
+          }
+        })
+        .catch(error => console.error('Error tracking with drone:', error));
     }
 
     function sendLocationToServer(latitude, longitude) {
@@ -687,6 +1282,9 @@
 
     // Start live status updates every 2 seconds
     statusUpdateId = setInterval(updateLiveStatus, 2000);
+    
+    // Start log updates every 3 seconds
+    logUpdateId = setInterval(updateSystemLogs, 3000);
 
     // Handle page unload to stop tracking
     window.addEventListener('beforeunload', () => {
@@ -699,10 +1297,14 @@
       if (statusUpdateId) {
         clearInterval(statusUpdateId);
       }
+      if (logUpdateId) {
+        clearInterval(logUpdateId);
+      }
     });
 
-    // Initial status update
+    // Initial status and log update
     updateLiveStatus();
+    updateSystemLogs();
   </script>
 </body>
 </html>

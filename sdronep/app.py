@@ -1,6 +1,7 @@
-from flask import Flask, render_template, jsonify, request
-from telemetry import get_current_location, connect_vehicle
-from gimbal_control import center_camera, set_gimbal_angle, get_angle
+from flask import Flask, render_template, jsonify, request, Response
+from sdronep.telemetry import get_current_location, connect_vehicle
+from sdronep.gimbal_control import center_camera, set_gimbal_angle, get_angle
+from sdronep.human_detection import get_detector
 import os
 import math
 import threading
@@ -518,6 +519,172 @@ def drone_follow_loop():
         except Exception as e:
             log_message("ERROR", "FOLLOW", f"Follow loop error: {str(e)}")
             time.sleep(5)
+
+# Camera and Human Detection Routes
+
+@app.route("/camera/start", methods=["POST"])
+def start_camera():
+    """Start the camera and human detection"""
+    try:
+        print("🎥 TESTING MODE: Starting camera and human detection")
+        detector = get_detector()
+        
+        # Start detection in a separate thread
+        detection_thread = threading.Thread(
+            target=detector.run_detection, 
+            args=(0, False),  # Use camera 0 (laptop), no OpenCV window
+            daemon=True
+        )
+        detection_thread.start()
+        
+        log_message("SUCCESS", "CAMERA", "Human detection camera started")
+        return jsonify({"status": "Camera started successfully"})
+        
+    except Exception as e:
+        log_message("ERROR", "CAMERA", f"Failed to start camera: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/camera/stop", methods=["POST"]) 
+def stop_camera():
+    """Stop the camera and human detection"""
+    try:
+        print("🛑 TESTING MODE: Stopping camera")
+        detector = get_detector()
+        detector.cleanup()
+        
+        log_message("INFO", "CAMERA", "Human detection camera stopped")
+        return jsonify({"status": "Camera stopped"})
+        
+    except Exception as e:
+        log_message("ERROR", "CAMERA", f"Failed to stop camera: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/camera/feed")
+def camera_feed():
+    """Video feed for the camera stream"""
+    def generate():
+        detector = get_detector()
+        while True:
+            try:
+                frame_data = detector.get_frame_as_base64()
+                if frame_data:
+                    yield f"data:image/jpeg;base64,{frame_data}\n\n"
+                else:
+                    yield f"data:image/jpeg;base64,\n\n"
+                time.sleep(0.1)  # ~10 FPS for web display
+            except Exception as e:
+                print(f"Camera feed error: {e}")
+                time.sleep(0.5)
+    
+    return Response(generate(), mimetype='text/plain')
+
+@app.route("/camera/detections", methods=["GET"])
+def get_detections():
+    """Get current human detections"""
+    try:
+        detector = get_detector()
+        detections = detector.get_latest_detections()
+        
+        return jsonify({
+            "detections": detections,
+            "locked_person": detector.locked_person_id,
+            "show_boxes": detector.show_bounding_boxes
+        })
+        
+    except Exception as e:
+        log_message("ERROR", "CAMERA", f"Failed to get detections: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/camera/lock/<int:person_id>", methods=["POST"])
+def lock_person(person_id):
+    """Lock onto a specific person"""
+    try:
+        print(f"🔒 TESTING MODE: Locking onto person {person_id}")
+        detector = get_detector()
+        success = detector.lock_person(person_id)
+        
+        if success:
+            log_message("SUCCESS", "TRACKING", f"Locked onto person {person_id}")
+            return jsonify({"status": f"Locked onto person {person_id}"})
+        else:
+            log_message("WARNING", "TRACKING", f"Person {person_id} not found")
+            return jsonify({"error": "Person not found"}), 404
+            
+    except Exception as e:
+        log_message("ERROR", "TRACKING", f"Failed to lock person: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/camera/unlock", methods=["POST"])
+def unlock_person():
+    """Unlock from current person"""
+    try:
+        print("🔓 TESTING MODE: Unlocking person")
+        detector = get_detector()
+        detector.unlock_person()
+        
+        log_message("INFO", "TRACKING", "Unlocked from person")
+        return jsonify({"status": "Unlocked from person"})
+        
+    except Exception as e:
+        log_message("ERROR", "TRACKING", f"Failed to unlock person: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/camera/toggle_boxes", methods=["POST"])
+def toggle_bounding_boxes():
+    """Toggle bounding box visibility"""
+    try:
+        print("👁️ TESTING MODE: Toggling bounding boxes")
+        detector = get_detector()
+        show_boxes = detector.toggle_bounding_boxes()
+        
+        status = "enabled" if show_boxes else "disabled"
+        log_message("INFO", "CAMERA", f"Bounding boxes {status}")
+        return jsonify({"status": f"Bounding boxes {status}", "show_boxes": show_boxes})
+        
+    except Exception as e:
+        log_message("ERROR", "CAMERA", f"Failed to toggle boxes: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/drone/track_person", methods=["POST"])
+def track_person_with_drone():
+    """Make drone adjustments to center the locked person"""
+    try:
+        print("🎯 TESTING MODE: Calculating drone adjustments to center person")
+        detector = get_detector()
+        detections = detector.get_latest_detections()
+        
+        if detector.locked_person_id is None:
+            log_message("WARNING", "TRACKING", "No person locked for tracking")
+            return jsonify({"error": "No person locked"}), 400
+        
+        # Calculate drone adjustments
+        adjustments = detector.calculate_drone_adjustment(detections)
+        
+        if adjustments['yaw_adjustment'] == 0 and adjustments['pitch_adjustment'] == 0:
+            log_message("INFO", "TRACKING", "Person already centered")
+            return jsonify({"status": "Person already centered", "adjustments": adjustments})
+        
+        # TESTING MODE: Print what we would do instead of actual drone movement
+        yaw_adj = adjustments['yaw_adjustment']
+        pitch_adj = adjustments['pitch_adjustment']
+        
+        print(f"🛩️ TESTING: Would rotate drone - Yaw: {yaw_adj:.2f}°, Pitch: {pitch_adj:.2f}°")
+        log_message("INFO", "TRACKING", f"TESTING: Drone adjustment needed - Yaw: {yaw_adj:.1f}°, Pitch: {pitch_adj:.1f}°")
+        
+        # TODO: When connecting to actual drone, implement actual rotation commands here
+        # vehicle = get_drone_vehicle()
+        # if vehicle:
+        #     # Apply small rotational adjustments
+        #     # You'll need to implement rotation commands based on your drone's capabilities
+        
+        return jsonify({
+            "status": "TESTING: Tracking adjustment calculated (no actual movement)",
+            "adjustments": adjustments
+        })
+        
+    except Exception as e:
+        log_message("ERROR", "TRACKING", f"Failed to track person: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 # Start drone telemetry and follow loops in background threads
 telemetry_thread = threading.Thread(target=drone_telemetry_loop, daemon=True)
