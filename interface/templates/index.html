@@ -6,6 +6,59 @@
     body {
       font-family: Arial, sans-serif;
       max-width: 1000px;
+    }
+  </style>
+    <div class="section">
+      <h2>Drone Follow Mode</h2>
+      <div class="controls">
+        <div class="input-group">
+          <label for="elevation">Elevation (m):</label>
+          <input type="number" id="elevation" min="5" max="100" value="20">
+          <label for="groundDistance">Ground Distance (m):</label>
+          <input type="number" id="groundDistance" min="5" max="50" value="10">
+        </div>
+        <div class="button-group">
+          <button id="followStartBtn" onclick="startDroneFollow()">Start Following</button>
+          <button id="followStopBtn" onclick="stopDroneFollow()" disabled>Stop Following</button>
+          <button id="homeBtn" onclick="droneHome()" class="home-btn">🏠 HOME (Land)</button>
+        </div>
+      </div>
+      <p id="followStatus">Configure elevation and distance, then click "Start Following" to begin autonomous tracking.</p>
+    </div>
+
+    <!-- Basic Drone Controls -->
+    <div class="section">
+      <h2>Basic Drone Controls</h2>
+      <div class="controls">
+        <div class="button-group">
+          <button id="takeoffBtn" onclick="droneTakeoff()" class="takeoff-btn">🚁 TAKEOFF (5 feet)</button>
+          <button id="landBtn" onclick="droneLand()" class="land-btn">🛬 LAND</button>
+        </div>
+      </div>
+      <p id="basicControlStatus">Use these controls for basic takeoff and landing operations.</p>
+    </div>
+
+    <!-- System Logs -->
+    <div class="section">
+      <h2>System Logs</h2>
+      <div class="controls">
+        <div class="button-group">
+          <button id="clearLogsBtn" onclick="clearSystemLogs()" class="clear-btn">🗑️ Clear Logs</button>
+          <label>
+            <input type="checkbox" id="autoScrollLogs" checked> Auto-scroll logs
+          </label>
+        </div>
+      </div>
+      <div id="logDisplay" class="log-display">
+        <div class="log-message">System ready - logs will appear here...</div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1000px;
       margin: 0 auto;
       padding: 20px;
       background-color: #f0f0f0;
@@ -78,9 +131,72 @@
       color: white;
       font-weight: bold;
     }
+    .takeoff-btn {
+      background-color: #2196F3;
+      color: white;
+      font-weight: bold;
+    }
+    .land-btn {
+      background-color: #9C27B0;
+      color: white;
+      font-weight: bold;
+    }
+    .clear-btn {
+      background-color: #FF5722;
+      color: white;
+      font-weight: bold;
+    }
     button:disabled {
       background-color: #cccccc;
       cursor: not-allowed;
+    }
+    .log-display {
+      max-height: 300px;
+      overflow-y: auto;
+      background-color: #1e1e1e;
+      color: #ffffff;
+      padding: 15px;
+      border-radius: 5px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 12px;
+      border: 1px solid #333;
+    }
+    .log-message {
+      margin: 2px 0;
+      padding: 2px 0;
+      word-wrap: break-word;
+    }
+    .log-message.INFO {
+      color: #4CAF50;
+    }
+    .log-message.WARNING {
+      color: #FF9800;
+    }
+    .log-message.ERROR {
+      color: #F44336;
+    }
+    .log-message.SUCCESS {
+      color: #00E676;
+    }
+    .log-message.DRONE {
+      border-left: 3px solid #2196F3;
+      padding-left: 8px;
+    }
+    .log-message.FOLLOW {
+      border-left: 3px solid #9C27B0;
+      padding-left: 8px;
+    }
+    .log-message.GIMBAL {
+      border-left: 3px solid #FF9800;
+      padding-left: 8px;
+    }
+    .log-message.USER {
+      border-left: 3px solid #4CAF50;
+      padding-left: 8px;
+    }
+    .log-message.SYSTEM {
+      border-left: 3px solid #607D8B;
+      padding-left: 8px;
     }
     .status-item {
       margin: 10px 0;
@@ -188,11 +304,13 @@
     let watchId = null;
     let intervalId = null;
     let statusUpdateId = null;
+    let logUpdateId = null;
     let lastKnownPosition = null;
 
     const userStatus = document.getElementById("userStatus");
     const droneStatus = document.getElementById("droneStatus");
     const followStatus = document.getElementById("followStatus");
+    const basicControlStatus = document.getElementById("basicControlStatus");
     const startBtn = document.getElementById("startBtn");
     const stopBtn = document.getElementById("stopBtn");
     const droneStartBtn = document.getElementById("droneStartBtn");
@@ -200,6 +318,11 @@
     const followStartBtn = document.getElementById("followStartBtn");
     const followStopBtn = document.getElementById("followStopBtn");
     const homeBtn = document.getElementById("homeBtn");
+    const takeoffBtn = document.getElementById("takeoffBtn");
+    const landBtn = document.getElementById("landBtn");
+    const clearLogsBtn = document.getElementById("clearLogsBtn");
+    const logDisplay = document.getElementById("logDisplay");
+    const autoScrollLogs = document.getElementById("autoScrollLogs");
 
     function updateUserStatus(message, className) {
       userStatus.textContent = message;
@@ -214,6 +337,11 @@
     function updateFollowStatus(message, className) {
       followStatus.textContent = message;
       followStatus.className = className;
+    }
+
+    function updateBasicControlStatus(message, className) {
+      basicControlStatus.textContent = message;
+      basicControlStatus.className = className;
     }
 
     function updateLiveStatus() {
@@ -253,6 +381,46 @@
         .catch(error => {
           console.error("Error updating status:", error);
         });
+    }
+
+    function updateSystemLogs() {
+      fetch("http://localhost:5000/logs")
+        .then(res => res.json())
+        .then(data => {
+          const logs = data.logs || [];
+          if (logs.length > 0) {
+            logDisplay.innerHTML = '';
+            logs.forEach(log => {
+              const logElement = document.createElement('div');
+              logElement.className = `log-message ${log.level} ${log.component}`;
+              logElement.textContent = `[${log.timestamp}] ${log.level} - ${log.component}: ${log.message}`;
+              logDisplay.appendChild(logElement);
+            });
+            
+            // Auto-scroll to bottom if enabled
+            if (autoScrollLogs.checked) {
+              logDisplay.scrollTop = logDisplay.scrollHeight;
+            }
+          }
+        })
+        .catch(error => {
+          console.error("Error updating logs:", error);
+        });
+    }
+
+    function clearSystemLogs() {
+      if (confirm("Are you sure you want to clear all system logs?")) {
+        fetch("http://localhost:5000/logs/clear", {
+          method: "POST"
+        })
+          .then(res => res.json())
+          .then(data => {
+            logDisplay.innerHTML = '<div class="log-message">Logs cleared - new logs will appear here...</div>';
+          })
+          .catch(error => {
+            console.error("Error clearing logs:", error);
+          });
+      }
     }
 
     function sendLocationToServer(latitude, longitude) {
@@ -457,6 +625,62 @@
           .catch(error => {
             console.error("Error landing drone:", error);
             updateFollowStatus(`Error landing drone: ${error.message}`, "status-error");
+          });
+      }
+    }
+
+    function droneTakeoff() {
+      updateBasicControlStatus("Initiating takeoff to 5 feet...", "status-sending");
+      takeoffBtn.disabled = true;
+
+      fetch("http://localhost:5000/drone/takeoff", {
+        method: "POST"
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            updateBasicControlStatus(`Takeoff error: ${data.error}`, "status-error");
+            takeoffBtn.disabled = false;
+          } else {
+            updateBasicControlStatus(`${data.status}`, "status-sending");
+            landBtn.disabled = false;
+            setTimeout(() => {
+              takeoffBtn.disabled = false;
+            }, 10000); // Re-enable after 10 seconds
+          }
+        })
+        .catch(error => {
+          console.error("Error during takeoff:", error);
+          updateBasicControlStatus(`Takeoff error: ${error.message}`, "status-error");
+          takeoffBtn.disabled = false;
+        });
+    }
+
+    function droneLand() {
+      if (confirm("Are you sure you want to land the drone at its current location?")) {
+        updateBasicControlStatus("Initiating landing...", "status-sending");
+        landBtn.disabled = true;
+
+        fetch("http://localhost:5000/drone/land", {
+          method: "POST"
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data.error) {
+              updateBasicControlStatus(`Landing error: ${data.error}`, "status-error");
+              landBtn.disabled = false;
+            } else {
+              updateBasicControlStatus(`${data.status}`, "status-stopped");
+              takeoffBtn.disabled = false;
+              setTimeout(() => {
+                landBtn.disabled = false;
+              }, 5000); // Re-enable after 5 seconds
+            }
+          })
+          .catch(error => {
+            console.error("Error during landing:", error);
+            updateBasicControlStatus(`Landing error: ${error.message}`, "status-error");
+            landBtn.disabled = false;
           });
       }
     }
