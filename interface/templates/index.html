@@ -219,6 +219,32 @@
       border: 2px solid #e67e22;
     }
     
+    .status-success {
+      background-color: #d5f4e6;
+      color: #27ae60;
+      border: 2px solid #2ecc71;
+    }
+    
+    .status-warning {
+      background-color: #fff3cd;
+      color: #856404;
+      border: 2px solid #ffeaa7;
+    }
+    
+    /* Camera Status */
+    .camera-status {
+      margin-top: 10px;
+      text-align: center;
+    }
+    
+    #cameraStatus {
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      display: inline-block;
+    }
+    
     /* Log Display */
     .log-display {
       max-height: 300px;
@@ -556,7 +582,7 @@
         <button id="startBtn" onclick="startLocationTracking()">Start User Tracking</button>
         <button id="stopBtn" onclick="stopLocationTracking()" disabled>Stop User Tracking</button>
       </div>
-      <p id="userStatus">Click "Start User Tracking" to begin sending your location to the drone.</p>
+      <p id="userStatus">📍 Click "Start User Tracking" to begin. Phone GPS2IP preferred (port 11123), laptop GPS as fallback.</p>
     </div>
 
     <!-- Drone Telemetry Controls -->
@@ -575,6 +601,9 @@
       <div id="statusDisplay">
         <div class="status-item">
           <strong>User Location:</strong> <span id="userLocation">Not available</span>
+        </div>
+        <div class="status-item">
+          <strong>GPS Source:</strong> <span id="gpsSource">No GPS</span>
         </div>
         <div class="status-item">
           <strong>Drone Location:</strong> <span id="droneLocation">Not available</span>
@@ -614,17 +643,19 @@
       <!-- Camera Controls -->
       <div class="controls">
         <div class="button-group">
-          <button id="startCameraBtn" onclick="startCamera()">📹 Start Camera</button>
-          <button id="stopCameraBtn" onclick="stopCamera()" disabled>⏹️ Stop Camera</button>
+          <button id="restartCameraBtn" onclick="restartCamera()">� Restart Camera</button>
           <button id="toggleBoxesBtn" onclick="toggleBoundingBoxes()">👁️ Toggle Boxes</button>
+        </div>
+        <div class="camera-status">
+          <span id="cameraStatus">� Live camera stream active</span>
         </div>
       </div>
       
       <!-- Live Camera Feed -->
       <div class="camera-container">
-        <img id="cameraFeed" src="" alt="Camera feed will appear here" style="display: none;">
-        <div id="cameraPlaceholder" class="camera-placeholder">
-          <p>📷 Click "Start Camera" to begin live feed</p>
+        <img id="cameraFeed" src="" alt="Live camera feed">
+        <div id="cameraPlaceholder" class="camera-placeholder" style="display: none;">
+          <p>📷 Camera initializing...</p>
         </div>
       </div>
       
@@ -660,6 +691,9 @@
       </div>
       
       <p id="cameraStatus">Camera controls for human detection and tracking integration.</p>
+      <div class="button-group">
+        <button id="toggleCameraBtn" onclick="toggleCamera()" class="control-btn">📹 Enable Camera</button>
+      </div>
     </div>
 
     <!-- Basic Drone Controls -->
@@ -770,6 +804,31 @@
             document.getElementById("userLocation").textContent = "Not available";
           }
 
+          // Update GPS source display
+          const gpsSourceElement = document.getElementById("gpsSource");
+          if (data.gps_source && data.gps_status) {
+            gpsSourceElement.textContent = data.gps_status;
+            
+            // Color code based on GPS health
+            gpsSourceElement.className = '';
+            if (data.gps_health === 'excellent') {
+              gpsSourceElement.style.color = '#27ae60'; // Green
+            } else if (data.gps_health === 'good') {
+              gpsSourceElement.style.color = '#f39c12'; // Orange
+            } else if (data.gps_health === 'poor') {
+              gpsSourceElement.style.color = '#e74c3c'; // Red
+            } else if (data.gps_health === 'fair') {
+              gpsSourceElement.style.color = '#3498db'; // Blue
+            } else if (data.gps_health === 'manual') {
+              gpsSourceElement.style.color = '#9b59b6'; // Purple
+            } else {
+              gpsSourceElement.style.color = '#7f8c8d'; // Gray
+            }
+          } else {
+            gpsSourceElement.textContent = "No GPS source";
+            gpsSourceElement.style.color = '#7f8c8d';
+          }
+
           // Update drone location display
           if (data.drone_has_location) {
             document.getElementById("droneLocation").textContent = 
@@ -791,6 +850,27 @@
             `Active (${data.target_elevation}m elevation, ${data.target_distance}m distance)` : 
             "Inactive";
           document.getElementById("followMode").textContent = followModeText;
+          
+          // Update camera status and toggle button
+          const cameraStatus = document.getElementById('cameraStatus');
+          const toggleCameraBtn = document.getElementById('toggleCameraBtn');
+          
+          if (data.camera_enabled !== undefined) {
+            if (data.camera_enabled) {
+              if (data.camera_running) {
+                cameraStatus.textContent = '📹 Live camera stream active';
+                cameraStatus.className = 'status-success';
+              } else {
+                cameraStatus.textContent = '📹 Camera enabled but not running';
+                cameraStatus.className = 'status-warning';
+              }
+              toggleCameraBtn.textContent = '📹 Disable Camera';
+            } else {
+              cameraStatus.textContent = '📹 Camera disabled';
+              cameraStatus.className = 'status-info';
+              toggleCameraBtn.textContent = '📹 Enable Camera';
+            }
+          }
         })
         .catch(error => {
           console.error("Error updating status:", error);
@@ -838,64 +918,145 @@
     }
 
     // Camera control functions
-    function startCamera() {
-      fetch('http://localhost:5000/camera/start', { method: 'POST' })
+    function restartCamera() {
+      const cameraStatus = document.getElementById('cameraStatus');
+      cameraStatus.textContent = '🔄 Restarting camera...';
+      cameraStatus.className = 'status-warning';
+      
+      fetch('http://localhost:5000/camera/restart', { method: 'POST' })
         .then(response => response.json())
         .then(data => {
           if (data.error) {
-            alert('Error starting camera: ' + data.error);
-            cameraStatus.textContent = 'Failed to start camera: ' + data.error;
+            cameraStatus.textContent = 'Failed to restart camera: ' + data.error;
             cameraStatus.className = 'status-error';
+            alert('Error restarting camera: ' + data.error);
           } else {
-            cameraActive = true;
-            startCameraBtn.disabled = true;
-            stopCameraBtn.disabled = false;
-            cameraPlaceholder.style.display = 'none';
-            cameraFeed.style.display = 'block';
-            
-            // Start camera feed
-            startCameraFeed();
-            
-            // Start detection updates
-            startDetectionUpdates();
-            
-            cameraStatus.textContent = 'Camera started successfully - live feed active';
-            cameraStatus.className = 'status-sending';
-            console.log('Camera started successfully');
+            cameraStatus.textContent = '📹 Camera restarted - live stream active';
+            cameraStatus.className = 'status-success';
+            console.log('Camera restarted successfully');
           }
         })
         .catch(error => {
-          console.error('Error starting camera:', error);
-          alert('Failed to start camera');
-          cameraStatus.textContent = 'Failed to start camera';
+          console.error('Error restarting camera:', error);
+          cameraStatus.textContent = 'Failed to restart camera';
           cameraStatus.className = 'status-error';
         });
     }
 
-    function stopCamera() {
-      fetch('http://localhost:5000/camera/stop', { method: 'POST' })
+    function toggleCamera() {
+      const cameraStatus = document.getElementById('cameraStatus');
+      const toggleBtn = document.getElementById('toggleCameraBtn');
+      
+      cameraStatus.textContent = '🔄 Toggling camera...';
+      cameraStatus.className = 'status-warning';
+      toggleBtn.disabled = true;
+      
+      fetch('http://localhost:5000/camera/toggle', { method: 'POST' })
         .then(response => response.json())
         .then(data => {
-          cameraActive = false;
-          startCameraBtn.disabled = false;
-          stopCameraBtn.disabled = true;
-          cameraFeed.style.display = 'none';
-          cameraPlaceholder.style.display = 'block';
-          
-          // Stop intervals
-          if (cameraFeedInterval) clearInterval(cameraFeedInterval);
-          if (detectionInterval) clearInterval(detectionInterval);
-          
-          // Reset UI
-          updateDetectionUI({ detections: [], locked_person: null, show_boxes: true });
-          
-          cameraStatus.textContent = 'Camera stopped';
-          cameraStatus.className = 'status-stopped';
-          console.log('Camera stopped');
+          if (data.error) {
+            cameraStatus.textContent = 'Failed to toggle camera: ' + data.error;
+            cameraStatus.className = 'status-error';
+            alert('Error toggling camera: ' + data.error);
+          } else {
+            if (data.camera_enabled) {
+              cameraStatus.textContent = '📹 Camera enabled - live stream active';
+              cameraStatus.className = 'status-success';
+              toggleBtn.textContent = '📹 Disable Camera';
+              cameraActive = true;
+              
+              // Show camera feed, hide placeholder
+              const cameraFeed = document.getElementById('cameraFeed');
+              const cameraPlaceholder = document.getElementById('cameraPlaceholder');
+              cameraFeed.style.display = 'block';
+              cameraPlaceholder.style.display = 'none';
+              
+              // Start camera feed and detection updates
+              startCameraFeed();
+              startDetectionUpdates();
+            } else {
+              cameraStatus.textContent = '📹 Camera disabled';
+              cameraStatus.className = 'status-info';
+              toggleBtn.textContent = '📹 Enable Camera';
+              cameraActive = false;
+              
+              // Stop camera feed and detection updates
+              stopCameraFeed();
+              stopDetectionUpdates();
+              
+              // Clear the camera feed when disabled
+              const cameraFeed = document.getElementById('cameraFeed');
+              const cameraPlaceholder = document.getElementById('cameraPlaceholder');
+              cameraFeed.style.display = 'none';
+              cameraFeed.src = ''; // Clear the image source
+              cameraPlaceholder.style.display = 'block';
+              cameraPlaceholder.innerHTML = '<p>📹 Camera disabled</p>';
+            }
+            console.log('Camera toggled:', data.camera_enabled ? 'enabled' : 'disabled');
+          }
         })
         .catch(error => {
-          console.error('Error stopping camera:', error);
-          cameraStatus.textContent = 'Error stopping camera';
+          console.error('Error toggling camera:', error);
+          cameraStatus.textContent = 'Failed to toggle camera';
+          cameraStatus.className = 'status-error';
+        })
+        .finally(() => {
+          toggleBtn.disabled = false;
+        });
+    }
+
+    function initializeLiveStream() {
+      // Check camera status from server first
+      fetch('http://localhost:5000/camera/status')
+        .then(response => response.json())
+        .then(data => {
+          const cameraFeed = document.getElementById('cameraFeed');
+          const cameraPlaceholder = document.getElementById('cameraPlaceholder');
+          const cameraStatus = document.getElementById('cameraStatus');
+          const toggleBtn = document.getElementById('toggleCameraBtn');
+          
+          if (data.camera_enabled) {
+            // Camera is enabled, start the feed
+            cameraActive = true;
+            
+            // Show camera feed, hide placeholder
+            cameraFeed.style.display = 'block';
+            cameraPlaceholder.style.display = 'none';
+            
+            // Start camera feed and detection updates
+            startCameraFeed();
+            startDetectionUpdates();
+            
+            // Update status and button
+            cameraStatus.textContent = '📹 Live camera stream active';
+            cameraStatus.className = 'status-success';
+            toggleBtn.textContent = '📹 Disable Camera';
+          } else {
+            // Camera is disabled, show placeholder
+            cameraActive = false;
+            
+            cameraFeed.style.display = 'none';
+            cameraPlaceholder.style.display = 'block';
+            
+            // Update status and button
+            cameraStatus.textContent = '📷 Camera disabled';
+            cameraStatus.className = 'status-warning';
+            toggleBtn.textContent = '📹 Enable Camera';
+          }
+          
+          console.log('Live camera stream initialized - Camera enabled:', data.camera_enabled);
+        })
+        .catch(error => {
+          console.error('Error checking camera status:', error);
+          // Default to disabled state on error
+          cameraActive = false;
+          const cameraFeed = document.getElementById('cameraFeed');
+          const cameraPlaceholder = document.getElementById('cameraPlaceholder');
+          const cameraStatus = document.getElementById('cameraStatus');
+          
+          cameraFeed.style.display = 'none';
+          cameraPlaceholder.style.display = 'block';
+          cameraStatus.textContent = '⚠️ Camera status check failed';
           cameraStatus.className = 'status-error';
         });
     }
@@ -904,10 +1065,11 @@
       cameraFeedInterval = setInterval(() => {
         if (cameraActive) {
           fetch('http://localhost:5000/camera/feed')
-            .then(response => response.text())
+            .then(response => response.json())
             .then(data => {
-              if (data.startsWith('data:image/jpeg;base64,') && data.length > 30) {
-                cameraFeed.src = data;
+              if (data.frame && data.frame.length > 50) {
+                const cameraFeed = document.getElementById('cameraFeed');
+                cameraFeed.src = data.frame;
               }
             })
             .catch(error => console.error('Error getting camera feed:', error));
@@ -926,6 +1088,20 @@
             .catch(error => console.error('Error getting detections:', error));
         }
       }, 500); // Update every 500ms
+    }
+
+    function stopCameraFeed() {
+      if (cameraFeedInterval !== null) {
+        clearInterval(cameraFeedInterval);
+        cameraFeedInterval = null;
+      }
+    }
+
+    function stopDetectionUpdates() {
+      if (detectionInterval !== null) {
+        clearInterval(detectionInterval);
+        detectionInterval = null;
+      }
     }
 
     function updateDetectionUI(data) {
@@ -1054,34 +1230,57 @@
       isUserTracking = true;
       startBtn.disabled = true;
       stopBtn.disabled = false;
-      updateUserStatus("Starting user location tracking...", "status-sending");
+      updateUserStatus("Getting location...", "status-sending");
 
-      // Watch position for real-time updates
-      watchId = navigator.geolocation.watchPosition(
+      navigator.geolocation.getCurrentPosition(
         (position) => {
           lastKnownPosition = {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude
           };
+          updateUserStatus("Location acquired successfully", "status-success");
           sendLocationToServer(lastKnownPosition.latitude, lastKnownPosition.longitude);
+
+          // Start watching for position changes
+          watchId = navigator.geolocation.watchPosition(
+            (position) => {
+              lastKnownPosition = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude
+              };
+              sendLocationToServer(lastKnownPosition.latitude, lastKnownPosition.longitude);
+            },
+            (error) => {
+              console.error("Geolocation error:", error);
+              updateUserStatus("Location error: " + error.message, "status-error");
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 30000
+            }
+          );
+
+          // Send location every 3 seconds
+          intervalId = setInterval(() => {
+            if (isUserTracking && lastKnownPosition) {
+              sendLocationToServer(lastKnownPosition.latitude, lastKnownPosition.longitude);
+            }
+          }, 3000);
         },
         (error) => {
           console.error("Geolocation error:", error);
-          updateUserStatus(`Geolocation error: ${error.message}`, "status-error");
+          updateUserStatus("Location error: " + error.message, "status-error");
+          isUserTracking = false;
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
         },
         {
           enableHighAccuracy: true,
           timeout: 10000,
-          maximumAge: 5000
+          maximumAge: 60000
         }
       );
-
-      // Also send location every 3 seconds using the last known position
-      intervalId = setInterval(() => {
-        if (isUserTracking && lastKnownPosition) {
-          sendLocationToServer(lastKnownPosition.latitude, lastKnownPosition.longitude);
-        }
-      }, 3000);
     }
 
     function stopLocationTracking() {
@@ -1279,6 +1478,9 @@
           });
       }
     }
+
+    // Initialize live camera stream on page load
+    initializeLiveStream();
 
     // Start live status updates every 2 seconds
     statusUpdateId = setInterval(updateLiveStatus, 2000);

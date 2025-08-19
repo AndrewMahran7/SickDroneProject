@@ -59,13 +59,22 @@ class HumanDetector:
             bool: True if camera initialized successfully
         """
         try:
+            print(f"🔍 Attempting to initialize camera {camera_index} with DirectShow backend...")
+            
+            # Close existing camera if it exists
+            if hasattr(self, 'cap') and self.cap is not None:
+                print("🔄 Releasing existing camera connection...")
+                self.cap.release()
+                time.sleep(0.5)  # Give camera time to be released
+            
             # Use DirectShow backend for better Windows compatibility
             # This avoids MSMF errors that are common on Windows
             self.cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
             
             if not self.cap.isOpened():
-                print(f"Error: Cannot open camera {camera_index} with DirectShow backend")
-                print("Available cameras: Try camera_index 0 (laptop), 1, 2, etc. for external cameras")
+                print(f"❌ Error: Cannot open camera {camera_index} with DirectShow backend")
+                print("📋 Available cameras: Try camera_index 0 (laptop), 1, 2, etc. for external cameras")
+                print("💡 Camera may be in use by another application")
                 return False
                 
             # Set camera properties for better performance
@@ -78,12 +87,13 @@ class HumanDetector:
             height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             self.frame_center = (width // 2, height // 2)
             
-            print(f"Camera {camera_index} initialized successfully with DirectShow: {width}x{height}")
-            print(f"Frame center: {self.frame_center}")
+            print(f"✅ Camera {camera_index} initialized successfully with DirectShow: {width}x{height}")
+            print(f"📍 Frame center: {self.frame_center}")
             return True
             
         except Exception as e:
-            print(f"Error initializing camera: {e}")
+            print(f"❌ Error initializing camera: {e}")
+            print(f"🔍 Exception type: {type(e).__name__}")
             return False
     
     def detect_humans(self, frame: np.ndarray) -> List[dict]:
@@ -432,7 +442,11 @@ class HumanDetector:
         """
         print(f"🎥 TESTING MODE: Starting camera detection (camera_index={camera_index})")
         
-        if not self.initialize_camera(camera_index):
+        camera_init_result = self.initialize_camera(camera_index)
+        print(f"🔍 Camera initialization result: {camera_init_result}")
+        
+        if not camera_init_result:
+            print(f"❌ Camera initialization failed for camera {camera_index}")
             return
         
         self.is_running = True

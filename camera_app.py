@@ -14,6 +14,7 @@ app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 # Global variables for camera system
 app.config['system_logs'] = []           # System log storage
 detector_instance = None
+camera_auto_started = False
 
 def log_message(level, component, message):
     """
@@ -47,9 +48,47 @@ def get_detector():
         log_message("INFO", "CAMERA", "Single camera detector instance created")
     return detector_instance
 
+def auto_start_camera():
+    """Automatically start camera when Flask app starts"""
+    global camera_auto_started
+    if not camera_auto_started:
+        try:
+            print("🎥 AUTO-START: Initializing laptop camera for continuous streaming")
+            detector = get_detector()
+            
+            # Start detection in background thread
+            detection_thread = threading.Thread(
+                target=detector.run_detection,
+                args=(0, False),  # Use camera 0 (laptop), no OpenCV window
+                daemon=True
+            )
+            detection_thread.start()
+            
+            # Wait for camera initialization with retry mechanism
+            max_retries = 10  # Wait up to 5 seconds (10 * 0.5s)
+            for attempt in range(max_retries):
+                time.sleep(0.5)
+                print(f"🔍 AUTO-START: Checking camera status (attempt {attempt + 1}/{max_retries})")
+                print(f"    Detector instance: {detector is not None}")
+                print(f"    Is running: {detector.is_running if detector else 'N/A'}")
+                
+                if detector.is_running:
+                    log_message("SUCCESS", "CAMERA", "Camera auto-started for continuous live streaming")
+                    camera_auto_started = True
+                    print("✅ Camera live stream ready at http://localhost:5000")
+                    return
+            
+            # If we reach here, camera didn't start properly
+            log_message("WARNING", "CAMERA", f"Auto-start attempted but camera not running after {max_retries} attempts")
+            print("⚠️ Camera may need manual restart - check /camera/restart endpoint")
+                
+        except Exception as e:
+            log_message("ERROR", "CAMERA", f"Auto-start failed: {str(e)}")
+            print(f"❌ Camera auto-start failed: {e}")
+
 def cleanup_detector():
     """Cleanup and reset detector instance"""
-    global detector_instance
+    global detector_instance, camera_auto_started
     if detector_instance is not None:
         try:
             detector_instance.cleanup()
@@ -57,6 +96,7 @@ def cleanup_detector():
         except:
             pass
         detector_instance = None
+        camera_auto_started = False
 
 @app.route("/")
 def index():
@@ -79,93 +119,70 @@ def clear_logs():
 @app.route("/status", methods=["GET"])
 def get_status():
     """Get basic system status for camera-only mode"""
+    global detector_instance
+    camera_running = detector_instance is not None and detector_instance.is_running
+    
     return jsonify({
         "tracking_active": False,
         "follow_mode": False,
         "camera_mode": True,
+        "camera_running": camera_running,
         "user_has_location": False,
         "drone_has_location": False
     })
 
 # Camera and Human Detection Routes
 
-@app.route("/camera/start", methods=["POST"])
-def start_camera():
-    """Start the camera and human detection"""
-    try:
-        print("🎥 TESTING MODE: Starting laptop camera and human detection")
-        
-        # Cleanup any existing detector first
-        cleanup_detector()
-        
-        # Get fresh detector instance
-        detector = get_detector()
-        
-        # Ensure camera is not already running
-        if detector.is_running:
-            log_message("WARNING", "CAMERA", "Camera already running - stopping first")
-            detector.cleanup()
-            time.sleep(1)  # Give time for cleanup
-        
-        # Start detection in a separate thread with laptop camera (index 0)
-        detection_thread = threading.Thread(
-            target=detector.run_detection, 
-            args=(0, False),  # Use camera 0 (laptop), no OpenCV window
-            daemon=True
-        )
-        detection_thread.start()
-        
-        # Wait a moment for initialization
-        time.sleep(1)
-        
-        if detector.is_running:
-            log_message("SUCCESS", "CAMERA", "Single laptop camera instance started successfully")
-            return jsonify({"status": "Camera started successfully"})
-        else:
-            log_message("ERROR", "CAMERA", "Failed to start camera - check if camera is being used by another application")
-            return jsonify({"error": "Failed to start camera"}), 500
-        
-    except Exception as e:
-        log_message("ERROR", "CAMERA", f"Failed to start camera: {str(e)}")
-        cleanup_detector()  # Cleanup on error
-        return jsonify({"error": str(e)}), 500
+@app.route("/camera/status", methods=["GET"])
+def get_camera_status():
+    """Get current camera status"""
+    global detector_instance
+    if detector_instance is None:
+        return jsonify({"camera_running": False, "message": "Camera not initialized"})
+    
+    return jsonify({
+        "camera_running": detector_instance.is_running,
+        "message": "Camera live stream active" if detector_instance.is_running else "Camera stopped"
+    })
 
-@app.route("/camera/stop", methods=["POST"]) 
-def stop_camera():
-    """Stop the camera and human detection"""
+@app.route("/camera/restart", methods=["POST"])
+def restart_camera():
+    """Restart camera if there are issues"""
     try:
-        print("🛑 TESTING MODE: Stopping laptop camera")
+        print("🔄 RESTART: Restarting camera system")
         cleanup_detector()
+        time.sleep(1)
+        auto_start_camera()
         
-        log_message("INFO", "CAMERA", "Laptop camera stopped and cleaned up")
-        return jsonify({"status": "Camera stopped"})
-        
+        global detector_instance
+        if detector_instance and detector_instance.is_running:
+            log_message("SUCCESS", "CAMERA", "Camera restarted successfully")
+            return jsonify({"status": "Camera restarted successfully"})
+        else:
+            log_message("ERROR", "CAMERA", "Camera restart failed")
+            return jsonify({"error": "Camera restart failed"}), 500
+            
     except Exception as e:
-        log_message("ERROR", "CAMERA", f"Failed to stop camera: {str(e)}")
+        log_message("ERROR", "CAMERA", f"Restart error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/camera/feed")
 def camera_feed():
-    """Video feed for the camera stream"""
-    def generate():
-        global detector_instance
-        if detector_instance is None:
-            yield f"data:image/jpeg;base64,\n\n"
-            return
-            
-        while detector_instance and detector_instance.is_running:
-            try:
-                frame_data = detector_instance.get_frame_as_base64()
-                if frame_data:
-                    yield f"data:image/jpeg;base64,{frame_data}\n\n"
-                else:
-                    yield f"data:image/jpeg;base64,\n\n"
-                time.sleep(0.1)  # ~10 FPS for web display
-            except Exception as e:
-                print(f"Camera feed error: {e}")
-                time.sleep(0.5)
+    """Video feed for the camera stream - returns single frame as base64"""
+    global detector_instance
+    if detector_instance is None or not detector_instance.is_running:
+        # Return empty response if camera not running
+        return jsonify({"frame": "", "status": "Camera not running"})
     
-    return Response(generate(), mimetype='text/plain')
+    try:
+        frame_data = detector_instance.get_frame_as_base64()
+        if frame_data:
+            return jsonify({"frame": f"data:image/jpeg;base64,{frame_data}", "status": "OK"})
+        else:
+            return jsonify({"frame": "", "status": "No frame available"})
+    except Exception as e:
+        print(f"Camera feed error: {e}")
+        return jsonify({"frame": "", "status": f"Error: {str(e)}"})
 
 @app.route("/camera/detections", methods=["GET"])
 def get_detections():
@@ -270,7 +287,12 @@ def track_person_with_drone():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    print("🚀 Starting Camera-Only Testing Mode")
-    print("📹 Using single laptop camera instance")
-    print("🌐 Access the interface at: http://localhost:5000")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    print("🚀 Starting Camera Live Stream Mode")
+    print("📹 Camera will auto-start for continuous streaming")
+    print("🌐 Access the live feed at: http://localhost:5000")
+    
+    # Auto-start camera in a separate thread to avoid blocking Flask startup
+    startup_thread = threading.Thread(target=auto_start_camera, daemon=True)
+    startup_thread.start()
+    
+    app.run(debug=False, host='0.0.0.0', port=5000)
