@@ -873,7 +873,6 @@
           }
         })
         .catch(error => {
-          console.error("Error updating status:", error);
         });
     }
 
@@ -898,7 +897,6 @@
           }
         })
         .catch(error => {
-          console.error("Error updating logs:", error);
         });
     }
 
@@ -912,7 +910,6 @@
             logDisplay.innerHTML = '<div class="log-message">Logs cleared - new logs will appear here...</div>';
           })
           .catch(error => {
-            console.error("Error clearing logs:", error);
           });
       }
     }
@@ -933,11 +930,9 @@
           } else {
             cameraStatus.textContent = '📹 Camera restarted - live stream active';
             cameraStatus.className = 'status-success';
-            console.log('Camera restarted successfully');
           }
         })
         .catch(error => {
-          console.error('Error restarting camera:', error);
           cameraStatus.textContent = 'Failed to restart camera';
           cameraStatus.className = 'status-error';
         });
@@ -992,11 +987,9 @@
               cameraPlaceholder.style.display = 'block';
               cameraPlaceholder.innerHTML = '<p>📹 Camera disabled</p>';
             }
-            console.log('Camera toggled:', data.camera_enabled ? 'enabled' : 'disabled');
           }
         })
         .catch(error => {
-          console.error('Error toggling camera:', error);
           cameraStatus.textContent = 'Failed to toggle camera';
           cameraStatus.className = 'status-error';
         })
@@ -1044,10 +1037,8 @@
             toggleBtn.textContent = '📹 Enable Camera';
           }
           
-          console.log('Live camera stream initialized - Camera enabled:', data.camera_enabled);
         })
         .catch(error => {
-          console.error('Error checking camera status:', error);
           // Default to disabled state on error
           cameraActive = false;
           const cameraFeed = document.getElementById('cameraFeed');
@@ -1072,9 +1063,9 @@
                 cameraFeed.src = data.frame;
               }
             })
-            .catch(error => console.error('Error getting camera feed:', error));
+            .catch(error => {});
         }
-      }, 100); // 10 FPS for web display
+      }, 100);
     }
 
     function startDetectionUpdates() {
@@ -1085,9 +1076,9 @@
             .then(data => {
               updateDetectionUI(data);
             })
-            .catch(error => console.error('Error getting detections:', error));
+            .catch(error => {});
         }
-      }, 500); // Update every 500ms
+      }, 500);
     }
 
     function stopCameraFeed() {
@@ -1148,29 +1139,23 @@
         .then(data => {
           if (data.error) {
             alert('Error locking person: ' + data.error);
-          } else {
-            console.log(`Locked onto person ${personId}`);
           }
         })
-        .catch(error => console.error('Error locking person:', error));
+        .catch(error => {});
     }
 
     function unlockPerson() {
       fetch('http://localhost:5000/camera/unlock', { method: 'POST' })
         .then(response => response.json())
-        .then(data => {
-          console.log('Unlocked from person');
-        })
-        .catch(error => console.error('Error unlocking person:', error));
+        .then(data => {})
+        .catch(error => {});
     }
 
     function toggleBoundingBoxes() {
       fetch('http://localhost:5000/camera/toggle_boxes', { method: 'POST' })
         .then(response => response.json())
-        .then(data => {
-          console.log('Bounding boxes toggled:', data.show_boxes);
-        })
-        .catch(error => console.error('Error toggling boxes:', error));
+        .then(data => {})
+        .catch(error => {});
     }
 
     function trackPersonWithDrone() {
@@ -1180,18 +1165,17 @@
           if (data.error) {
             alert('Error tracking person: ' + data.error);
           } else {
-            console.log('Drone tracking adjustment:', data.adjustments);
             // Show feedback in tracking info
             const adj = data.adjustments;
             trackingInfo.innerHTML = `
-              <p>🎯 TESTING MODE: Calculated adjustments</p>
+              <p>🎯 Calculated drone adjustments</p>
               <p>Yaw: ${adj.yaw_adjustment?.toFixed(1) || 0}°, Pitch: ${adj.pitch_adjustment?.toFixed(1) || 0}°</p>
               <p>Person center: ${adj.person_center ? `(${adj.person_center[0]}, ${adj.person_center[1]})` : 'N/A'}</p>
               <p>Frame center: ${adj.frame_center ? `(${adj.frame_center[0]}, ${adj.frame_center[1]})` : 'N/A'}</p>
             `;
           }
         })
-        .catch(error => console.error('Error tracking with drone:', error));
+        .catch(error => {});
     }
 
     function sendLocationToServer(latitude, longitude) {
@@ -1214,7 +1198,6 @@
           }
         })
         .catch((error) => {
-          console.error("Error sending location:", error);
           if (isUserTracking) {
             updateUserStatus(`Error sending location: ${error.message}`, "status-error");
           }
@@ -1251,7 +1234,6 @@
               sendLocationToServer(lastKnownPosition.latitude, lastKnownPosition.longitude);
             },
             (error) => {
-              console.error("Geolocation error:", error);
               updateUserStatus("Location error: " + error.message, "status-error");
             },
             {
@@ -1269,7 +1251,6 @@
           }, 3000);
         },
         (error) => {
-          console.error("Geolocation error:", error);
           updateUserStatus("Location error: " + error.message, "status-error");
           isUserTracking = false;
           startBtn.disabled = false;
@@ -1313,7 +1294,6 @@
           updateDroneStatus("Drone tracking started - monitoring Pixhawk location", "status-sending");
         })
         .catch(error => {
-          console.error("Error starting drone tracking:", error);
           updateDroneStatus(`Error starting drone tracking: ${error.message}`, "status-error");
         });
     }
@@ -1330,7 +1310,6 @@
           updateDroneStatus("Drone tracking stopped.", "status-stopped");
         })
         .catch(error => {
-          console.error("Error stopping drone tracking:", error);
           updateDroneStatus(`Error stopping drone tracking: ${error.message}`, "status-error");
         });
     }
@@ -1372,7 +1351,6 @@
           }
         })
         .catch(error => {
-          console.error("Error starting drone follow:", error);
           updateFollowStatus(`Error starting follow mode: ${error.message}`, "status-error");
           followStartBtn.disabled = false;
         });
@@ -1394,7 +1372,6 @@
           }
         })
         .catch(error => {
-          console.error("Error stopping drone follow:", error);
           updateFollowStatus(`Error stopping follow mode: ${error.message}`, "status-error");
         });
     }
@@ -1417,7 +1394,6 @@
             }
           })
           .catch(error => {
-            console.error("Error landing drone:", error);
             updateFollowStatus(`Error landing drone: ${error.message}`, "status-error");
           });
       }
@@ -1440,11 +1416,10 @@
             landBtn.disabled = false;
             setTimeout(() => {
               takeoffBtn.disabled = false;
-            }, 10000); // Re-enable after 10 seconds
+            }, 10000);
           }
         })
         .catch(error => {
-          console.error("Error during takeoff:", error);
           updateBasicControlStatus(`Takeoff error: ${error.message}`, "status-error");
           takeoffBtn.disabled = false;
         });
@@ -1468,24 +1443,20 @@
               takeoffBtn.disabled = false;
               setTimeout(() => {
                 landBtn.disabled = false;
-              }, 5000); // Re-enable after 5 seconds
+              }, 5000);
             }
           })
           .catch(error => {
-            console.error("Error during landing:", error);
             updateBasicControlStatus(`Landing error: ${error.message}`, "status-error");
             landBtn.disabled = false;
           });
       }
     }
 
-    // Initialize live camera stream on page load
     initializeLiveStream();
 
-    // Start live status updates every 2 seconds
     statusUpdateId = setInterval(updateLiveStatus, 2000);
     
-    // Start log updates every 3 seconds
     logUpdateId = setInterval(updateSystemLogs, 3000);
 
     // Handle page unload to stop tracking
@@ -1504,7 +1475,6 @@
       }
     });
 
-    // Initial status and log update
     updateLiveStatus();
     updateSystemLogs();
   </script>
