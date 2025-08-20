@@ -1,0 +1,68 @@
+MIT License
+
+Copyright (c) 2025 Andrew Mahran
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+THIRD PARTY LICENSES AND ATTRIBUTIONS
+================================================================================
+
+This project uses the following third-party libraries and models:
+
+1. YOLOv8 (Ultralytics)
+   License: AGPL-3.0 (for non-commercial use) or Enterprise License (for commercial use)
+   Copyright: Ultralytics
+   Source: https://github.com/ultralytics/ultralytics
+   
+   IMPORTANT LICENSE NOTICE:
+   The YOLOv8 model (yolov8n.pt) used in this project is licensed under AGPL-3.0.
+   - For NON-COMMERCIAL use: This is allowed under AGPL-3.0
+   - For COMMERCIAL use: You must obtain an Enterprise License from Ultralytics
+     Contact: https://www.ultralytics.com/license
+   
+   YOLOv8 License Text (AGPL-3.0):
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+2. DroneKit
+   License: Apache License 2.0
+   Copyright: 3D Robotics Inc.
+   Source: https://github.com/dronekit/dronekit-python
+
+3. OpenCV (cv2)
+   License: Apache License 2.0
+   Copyright: OpenCV team
+   Source: https://github.com/opencv/opencv
+
+4. Flask
+   License: BSD-3-Clause
+   Copyright: Pallets
+   Source: https://github.com/pallets/flask
+
+5. NumPy
+   License: BSD-3-Clause
+   Copyright: NumPy Developers
+   Source: https://github.com/numpy/numpy
+
+Note: If you plan to use this project commercially, please ensure you comply
+with all third-party license requirements, especially the Ultralytics
+Enterprise License requirement for commercial YOLOv8 usage.

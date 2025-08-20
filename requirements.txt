@@ -1,0 +1,37 @@
+# Core Dependencies
+flask>=2.3.0
+dronekit>=2.9.2
+dronekit-sitl>=3.3.0
+ultralytics>=8.0.0
+opencv-python>=4.5.0
+numpy>=1.21.0
+requests>=2.25.0
+
+# Additional Dependencies for full functionality
+Pillow>=8.0.0
+pyserial>=3.4
+pymavlink>=2.4.0
+
+# Development Dependencies (optional)
+pytest>=6.0.0
+pytest-runner>=5.2.0
+
+# Web Interface Dependencies  
+Werkzeug>=2.3.0
+Jinja2>=3.1.0
+MarkupSafe>=2.1.0
+itsdangerous>=2.1.0
+click>=8.1.0
+
+# Data Processing
+scipy>=1.7.0
+matplotlib>=3.3.0
+
+# Threading and Async Support
+threading2>=0.1.2
+
+# GPS and Navigation
+geopy>=2.2.0
+
+# Image Processing
+imageio>=2.9.0
