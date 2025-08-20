@@ -5,571 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Drone Location Tracker</title>
 
-  <style>
-    /* Reset and Base Styles */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: #333;
-      min-height: 100vh;
-      padding: 10px;
-    }
-    
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      background: white;
-      border-radius: 15px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-      padding: 20px;
-      margin-bottom: 20px;
-    }
-    
-    h1 {
-      text-align: center;
-      color: #2c3e50;
-      font-size: 2rem;
-      margin-bottom: 30px;
-      font-weight: 700;
-    }
-    
-    h2 {
-      color: #34495e;
-      font-size: 1.3rem;
-      margin-bottom: 15px;
-      border-left: 4px solid #3498db;
-      padding-left: 15px;
-      font-weight: 600;
-    }
-    
-    /* Section Styles */
-    .section {
-      background: #f8f9fa;
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 20px;
-      border: 1px solid #e9ecef;
-    }
-    
-    .controls {
-      display: flex;
-      flex-direction: column;
-      gap: 15px;
-      align-items: center;
-    }
-    
-    /* Input Styles */
-    .input-group {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 15px;
-      justify-content: center;
-      align-items: center;
-      margin-bottom: 15px;
-    }
-    
-    .input-group label {
-      font-weight: 600;
-      color: #2c3e50;
-      font-size: 0.95rem;
-    }
-    
-    .input-group input[type="number"] {
-      width: 80px;
-      padding: 10px 12px;
-      border: 2px solid #ddd;
-      border-radius: 8px;
-      font-size: 1rem;
-      text-align: center;
-      transition: all 0.3s ease;
-    }
-    
-    .input-group input[type="number"]:focus {
-      outline: none;
-      border-color: #3498db;
-      box-shadow: 0 0 10px rgba(52, 152, 219, 0.2);
-    }
-    
-    .input-group input[type="checkbox"] {
-      transform: scale(1.2);
-      margin-right: 8px;
-    }
-    
-    /* Button Styles */
-    .button-group {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      justify-content: center;
-    }
-    
-    button {
-      padding: 12px 20px;
-      font-size: 1rem;
-      font-weight: 600;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      min-width: 140px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    
-    button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-    }
-    
-    button:active {
-      transform: translateY(0);
-    }
-    
-    button:disabled {
-      background-color: #bdc3c7 !important;
-      cursor: not-allowed;
-      transform: none !important;
-      box-shadow: none !important;
-    }
-    
-    /* Button Color Schemes */
-    #startBtn, #droneStartBtn, #followStartBtn {
-      background: linear-gradient(45deg, #27ae60, #2ecc71);
-      color: white;
-    }
-    
-    #stopBtn, #droneStopBtn, #followStopBtn {
-      background: linear-gradient(45deg, #e74c3c, #c0392b);
-      color: white;
-    }
-    
-    .home-btn {
-      background: linear-gradient(45deg, #f39c12, #e67e22);
-      color: white;
-    }
-    
-    .takeoff-btn {
-      background: linear-gradient(45deg, #3498db, #2980b9);
-      color: white;
-    }
-    
-    .land-btn {
-      background: linear-gradient(45deg, #9b59b6, #8e44ad);
-      color: white;
-    }
-    
-    .clear-btn {
-      background: linear-gradient(45deg, #e74c3c, #c0392b);
-      color: white;
-    }
-    
-    /* Status Displays */
-    .status-item {
-      background: white;
-      padding: 15px;
-      margin-bottom: 10px;
-      border-radius: 8px;
-      border-left: 4px solid #3498db;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    }
-    
-    .status-item strong {
-      color: #2c3e50;
-      display: inline-block;
-      min-width: 120px;
-    }
-    
-    #statusDisplay {
-      background: #ecf0f1;
-      padding: 20px;
-      border-radius: 12px;
-      border: 1px solid #bdc3c7;
-    }
-    
-    #userStatus, #droneStatus, #followStatus, #basicControlStatus {
-      margin-top: 15px;
-      padding: 12px;
-      border-radius: 8px;
-      text-align: center;
-      font-weight: 600;
-    }
-    
-    /* Status Message Styles */
-    .status-sending {
-      background-color: #d5f4e6;
-      color: #27ae60;
-      border: 2px solid #2ecc71;
-    }
-    
-    .status-stopped {
-      background-color: #fadbd8;
-      color: #e74c3c;
-      border: 2px solid #c0392b;
-    }
-    
-    .status-error {
-      background-color: #fdeaa7;
-      color: #f39c12;
-      border: 2px solid #e67e22;
-    }
-    
-    .status-success {
-      background-color: #d5f4e6;
-      color: #27ae60;
-      border: 2px solid #2ecc71;
-    }
-    
-    .status-warning {
-      background-color: #fff3cd;
-      color: #856404;
-      border: 2px solid #ffeaa7;
-    }
-    
-    /* Camera Status */
-    .camera-status {
-      margin-top: 10px;
-      text-align: center;
-    }
-    
-    #cameraStatus {
-      padding: 8px 16px;
-      border-radius: 20px;
-      font-weight: 600;
-      font-size: 0.9rem;
-      display: inline-block;
-    }
-    
-    /* Log Display */
-    .log-display {
-      max-height: 300px;
-      overflow-y: auto;
-      background: #1a1a1a;
-      border-radius: 8px;
-      padding: 15px;
-      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-      font-size: 0.85rem;
-      border: 2px solid #333;
-    }
-    
-    .log-message {
-      color: #e8e8e8;
-      margin: 3px 0;
-      padding: 2px 0;
-      word-wrap: break-word;
-      line-height: 1.4;
-    }
-    
-    .log-message.INFO { color: #2ecc71; }
-    .log-message.WARNING { color: #f39c12; }
-    .log-message.ERROR { color: #e74c3c; }
-    .log-message.SUCCESS { color: #00e676; }
-    
-    .log-message.DRONE { border-left: 3px solid #3498db; padding-left: 8px; }
-    .log-message.FOLLOW { border-left: 3px solid #9b59b6; padding-left: 8px; }
-    .log-message.GIMBAL { border-left: 3px solid #f39c12; padding-left: 8px; }
-    .log-message.USER { border-left: 3px solid #2ecc71; padding-left: 8px; }
-    .log-message.SYSTEM { border-left: 3px solid #95a5a6; padding-left: 8px; }
-    
-    /* Camera Interface Styles */
-    .camera-container {
-      position: relative;
-      max-width: 800px;
-      margin: 20px auto;
-      border: 2px solid #ddd;
-      border-radius: 10px;
-      overflow: hidden;
-      background: #000;
-    }
-
-    #cameraFeed {
-      width: 100%;
-      height: auto;
-      display: block;
-    }
-
-    .camera-placeholder {
-      padding: 80px 20px;
-      text-align: center;
-      color: #666;
-      font-size: 16px;
-    }
-
-    .detection-status {
-      margin: 20px 0;
-      padding: 15px;
-      border-radius: 8px;
-      background: #f8f9fa;
-      border: 1px solid #e9ecef;
-    }
-
-    .status-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 15px;
-    }
-
-    .status-info {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 12px;
-      background: white;
-      border-radius: 5px;
-      border: 1px solid #ddd;
-    }
-
-    .person-list {
-      margin: 15px 0;
-      max-height: 200px;
-      overflow-y: auto;
-      background: #f8f9fa;
-      border-radius: 8px;
-      padding: 10px;
-    }
-
-    .person-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px;
-      margin: 8px 0;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      background: white;
-      transition: all 0.3s ease;
-    }
-
-    .person-item:hover {
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-
-    .person-item.locked {
-      border-color: #e74c3c;
-      background: #fdedec;
-    }
-
-    .person-item .person-info {
-      font-weight: 600;
-      color: #2c3e50;
-    }
-
-    .person-item .lock-btn {
-      padding: 6px 12px;
-      font-size: 0.9rem;
-      border-radius: 4px;
-      border: none;
-      cursor: pointer;
-      transition: all 0.3s ease;
-    }
-
-    .person-item .lock-btn.unlock {
-      background: #e74c3c;
-      color: white;
-    }
-
-    .person-item .lock-btn.lock {
-      background: #27ae60;
-      color: white;
-    }
-
-    .tracking-controls {
-      margin: 20px 0;
-      padding: 15px;
-      border-radius: 8px;
-      background: #f8f9fa;
-      border: 1px solid #e9ecef;
-    }
-
-    .tracking-info {
-      margin-top: 15px;
-      padding: 12px;
-      background: #e3f2fd;
-      border-radius: 6px;
-      font-size: 14px;
-      color: #1565c0;
-    }
-
-    #cameraStatus {
-      margin-top: 15px;
-      padding: 12px;
-      text-align: center;
-      font-style: italic;
-      color: #666;
-    }
-    
-    /* Mobile Responsiveness */
-    @media (max-width: 768px) {
-      body {
-        padding: 5px;
-      }
-      
-      .container {
-        padding: 15px;
-        border-radius: 10px;
-      }
-      
-      h1 {
-        font-size: 1.6rem;
-        margin-bottom: 20px;
-      }
-      
-      h2 {
-        font-size: 1.1rem;
-        margin-bottom: 12px;
-      }
-      
-      .section {
-        padding: 15px;
-        margin-bottom: 15px;
-      }
-      
-      .input-group {
-        flex-direction: column;
-        gap: 10px;
-        text-align: center;
-      }
-      
-      .input-group label {
-        font-size: 0.9rem;
-      }
-      
-      .input-group input[type="number"] {
-        width: 100px;
-        font-size: 1.1rem;
-        padding: 12px;
-      }
-      
-      .button-group {
-        flex-direction: column;
-        width: 100%;
-      }
-      
-      button {
-        width: 100%;
-        min-width: unset;
-        padding: 15px 20px;
-        font-size: 1.1rem;
-      }
-      
-      .status-item strong {
-        min-width: unset;
-        display: block;
-        margin-bottom: 5px;
-      }
-      
-      .log-display {
-        font-size: 0.8rem;
-        max-height: 250px;
-      }
-      
-      .camera-container {
-        max-width: 100%;
-        margin: 15px 0;
-      }
-      
-      .camera-placeholder {
-        padding: 60px 15px;
-        font-size: 14px;
-      }
-      
-      .status-grid {
-        grid-template-columns: 1fr;
-        gap: 10px;
-      }
-      
-      .status-info {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 5px;
-      }
-      
-      .person-item {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 8px;
-      }
-      
-      .person-item .lock-btn {
-        align-self: flex-end;
-      }
-    }
-    
-    /* Small Phone Responsiveness */
-    @media (max-width: 480px) {
-      .container {
-        padding: 10px;
-      }
-      
-      h1 {
-        font-size: 1.4rem;
-      }
-      
-      h2 {
-        font-size: 1rem;
-        padding-left: 10px;
-      }
-      
-      .section {
-        padding: 12px;
-      }
-      
-      button {
-        padding: 14px 16px;
-        font-size: 1rem;
-      }
-      
-      .input-group input[type="number"] {
-        width: 90px;
-      }
-    }
-    
-    /* Large Desktop Responsiveness */
-    @media (min-width: 1200px) {
-      .container {
-        padding: 30px;
-      }
-      
-      h1 {
-        font-size: 2.4rem;
-      }
-      
-      .section {
-        padding: 25px;
-      }
-      
-      .input-group {
-        flex-direction: row;
-      }
-      
-      .button-group {
-        flex-direction: row;
-      }
-      
-      button {
-        min-width: 160px;
-      }
-    }
-    
-    /* Landscape Orientation on Mobile */
-    @media (max-width: 768px) and (orientation: landscape) {
-      .button-group {
-        flex-direction: row;
-        flex-wrap: wrap;
-      }
-      
-      button {
-        flex: 1;
-        min-width: 120px;
-        max-width: 200px;
-      }
-    }
-  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
   <div class="container">
@@ -613,6 +49,113 @@
         </div>
         <div class="status-item">
           <strong>Follow Mode:</strong> <span id="followMode">Inactive</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Comprehensive Drone Metrics -->
+    <div class="section">
+      <h2>🚁 Drone Telemetry & Metrics</h2>
+      <div id="droneMetricsDisplay">
+        <div class="metrics-grid">
+          <!-- Connection & Status -->
+          <div class="metric-group">
+            <h3>Connection & Status</h3>
+            <div class="metric-item">
+              <strong>Connection:</strong> <span id="connectionStatus">Not Connected</span>
+            </div>
+            <div class="metric-item">
+              <strong>Armed:</strong> <span id="armedStatus">Unknown</span>
+            </div>
+            <div class="metric-item">
+              <strong>Ready to Arm:</strong> <span id="armableStatus">Unknown</span>
+            </div>
+            <div class="metric-item">
+              <strong>Flight Mode:</strong> <span id="flightMode">Unknown</span>
+            </div>
+            <div class="metric-item">
+              <strong>System Status:</strong> <span id="systemStatus">Unknown</span>
+            </div>
+          </div>
+
+          <!-- Altitude & Position -->
+          <div class="metric-group">
+            <h3>Altitude & Position</h3>
+            <div class="metric-item">
+              <strong>Relative Altitude:</strong> <span id="altitudeRelative">0 m</span>
+            </div>
+            <div class="metric-item">
+              <strong>Absolute Altitude:</strong> <span id="altitudeAbsolute">0 m</span>
+            </div>
+            <div class="metric-item">
+              <strong>Latitude:</strong> <span id="droneLatitude">0.000000</span>
+            </div>
+            <div class="metric-item">
+              <strong>Longitude:</strong> <span id="droneLongitude">0.000000</span>
+            </div>
+          </div>
+
+          <!-- Battery Information -->
+          <div class="metric-group">
+            <h3>Battery Information</h3>
+            <div class="metric-item">
+              <strong>Battery Level:</strong> <span id="batteryLevel">0%</span>
+            </div>
+            <div class="metric-item">
+              <strong>Battery Voltage:</strong> <span id="batteryVoltage">0.0 V</span>
+            </div>
+            <div class="metric-item">
+              <strong>Battery Current:</strong> <span id="batteryCurrent">0.0 A</span>
+            </div>
+            <div class="metric-item">
+              <strong>Battery Status:</strong> <span id="batteryStatus">Unknown</span>
+            </div>
+          </div>
+
+          <!-- GPS Information -->
+          <div class="metric-group">
+            <h3>GPS Information</h3>
+            <div class="metric-item">
+              <strong>GPS Fix:</strong> <span id="gpsFixType">No Fix</span>
+            </div>
+            <div class="metric-item">
+              <strong>Satellites:</strong> <span id="gpsSatellites">0</span>
+            </div>
+            <div class="metric-item">
+              <strong>GPS EPH:</strong> <span id="gpsEph">0</span>
+            </div>
+            <div class="metric-item">
+              <strong>GPS EPV:</strong> <span id="gpsEpv">0</span>
+            </div>
+          </div>
+
+          <!-- Attitude (Orientation) -->
+          <div class="metric-group">
+            <h3>Attitude (Orientation)</h3>
+            <div class="metric-item">
+              <strong>Pitch:</strong> <span id="pitchAngle">0.0°</span>
+            </div>
+            <div class="metric-item">
+              <strong>Roll:</strong> <span id="rollAngle">0.0°</span>
+            </div>
+            <div class="metric-item">
+              <strong>Yaw:</strong> <span id="yawAngle">0.0°</span>
+            </div>
+          </div>
+
+          <!-- Speed Information -->
+          <div class="metric-group">
+            <h3>Speed Information</h3>
+            <div class="metric-item">
+              <strong>Ground Speed:</strong> <span id="groundSpeed">0.0 m/s</span>
+            </div>
+            <div class="metric-item">
+              <strong>Air Speed:</strong> <span id="airSpeed">0.0 m/s</span>
+            </div>
+            <div class="metric-item">
+              <strong>Last Heartbeat:</strong> <span id="lastHeartbeat">Never</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -871,9 +414,188 @@
               toggleCameraBtn.textContent = '📹 Enable Camera';
             }
           }
+
+          // Update drone metrics
+          updateDroneMetrics(data.drone_metrics);
         })
         .catch(error => {
         });
+    }
+
+    function updateDroneMetrics(metrics) {
+      if (!metrics) {
+        metrics = {
+          connection_status: 'Not Connected',
+          armed: false,
+          is_armable: false,
+          flight_mode: 'Unknown',
+          system_status: 'Unknown',
+          altitude_relative: 0,
+          altitude_absolute: 0,
+          battery_level: 0,
+          battery_voltage: 0,
+          battery_current: 0,
+          battery_status: 'Unknown',
+          gps_fix_name: 'No Fix',
+          gps_satellites: 0,
+          gps_eph: 0,
+          gps_epv: 0,
+          pitch_degrees: 0,
+          roll_degrees: 0,
+          yaw_degrees: 0,
+          groundspeed: 0,
+          airspeed: 0,
+          latitude: 0,
+          longitude: 0,
+          last_heartbeat: 0
+        };
+      }
+
+      // Connection & Status
+      const connectionElement = document.getElementById("connectionStatus");
+      if (connectionElement) {
+        connectionElement.textContent = metrics.connection_status;
+        connectionElement.className = metrics.connection_status === 'Connected' ? 'metric-connected' : 
+                                     metrics.connection_status === 'Error' ? 'metric-critical' : 'metric-disconnected';
+      }
+
+      const armedElement = document.getElementById("armedStatus");
+      if (armedElement) {
+        armedElement.textContent = metrics.armed ? "ARMED ⚠️" : "Disarmed";
+        armedElement.className = metrics.armed ? 'metric-armed' : 'metric-disarmed';
+      }
+
+      const armableElement = document.getElementById("armableStatus");
+      if (armableElement) {
+        armableElement.textContent = metrics.is_armable ? "Ready ✓" : "Not Ready";
+        armableElement.className = metrics.is_armable ? 'metric-ready' : 'metric-not-ready';
+      }
+
+      const flightModeElement = document.getElementById("flightMode");
+      if (flightModeElement) {
+        flightModeElement.textContent = metrics.flight_mode;
+      }
+
+      const systemStatusElement = document.getElementById("systemStatus");
+      if (systemStatusElement) {
+        systemStatusElement.textContent = metrics.system_status;
+      }
+
+      // Altitude & Position
+      const altitudeRelativeElement = document.getElementById("altitudeRelative");
+      if (altitudeRelativeElement) {
+        altitudeRelativeElement.textContent = `${(metrics.altitude_relative || 0).toFixed(1)} m`;
+      }
+
+      const altitudeAbsoluteElement = document.getElementById("altitudeAbsolute");
+      if (altitudeAbsoluteElement) {
+        altitudeAbsoluteElement.textContent = `${(metrics.altitude_absolute || 0).toFixed(1)} m`;
+      }
+
+      const droneLatitudeElement = document.getElementById("droneLatitude");
+      if (droneLatitudeElement) {
+        droneLatitudeElement.textContent = (metrics.latitude || 0).toFixed(6);
+      }
+
+      const droneLongitudeElement = document.getElementById("droneLongitude");
+      if (droneLongitudeElement) {
+        droneLongitudeElement.textContent = (metrics.longitude || 0).toFixed(6);
+      }
+
+      // Battery Information
+      const batteryElement = document.getElementById("batteryLevel");
+      if (batteryElement) {
+        batteryElement.textContent = `${metrics.battery_level || 0}%`;
+        batteryElement.className = (metrics.battery_level || 0) > 75 ? 'battery-good' :
+                                   (metrics.battery_level || 0) > 50 ? 'battery-fair' :
+                                   (metrics.battery_level || 0) > 25 ? 'battery-low' : 
+                                   (metrics.battery_level || 0) > 0 ? 'battery-critical' : 'metric-unknown';
+      }
+
+      const batteryVoltageElement = document.getElementById("batteryVoltage");
+      if (batteryVoltageElement) {
+        batteryVoltageElement.textContent = `${(metrics.battery_voltage || 0).toFixed(1)} V`;
+      }
+
+      const batteryCurrentElement = document.getElementById("batteryCurrent");
+      if (batteryCurrentElement) {
+        batteryCurrentElement.textContent = `${(metrics.battery_current || 0).toFixed(1)} A`;
+      }
+      
+      const batteryStatusElement = document.getElementById("batteryStatus");
+      if (batteryStatusElement) {
+        batteryStatusElement.textContent = metrics.battery_status || 'Unknown';
+        batteryStatusElement.className = metrics.battery_status === 'Good' ? 'metric-good' :
+                                        metrics.battery_status === 'Fair' ? 'metric-warning' :
+                                        metrics.battery_status === 'Low' ? 'metric-warning' :
+                                        metrics.battery_status === 'Critical' ? 'metric-critical' : 'metric-unknown';
+      }
+
+      // GPS Information
+      const gpsFixElement = document.getElementById("gpsFixType");
+      if (gpsFixElement) {
+        gpsFixElement.textContent = metrics.gps_fix_name || 'No Fix';
+        gpsFixElement.className = (metrics.gps_fix_name && metrics.gps_fix_name.includes('3D')) ? 'metric-good' :
+                                 (metrics.gps_fix_name && metrics.gps_fix_name.includes('2D')) ? 'metric-warning' : 'metric-critical';
+      }
+
+      const satellitesElement = document.getElementById("gpsSatellites");
+      if (satellitesElement) {
+        satellitesElement.textContent = metrics.gps_satellites || 0;
+        satellitesElement.className = (metrics.gps_satellites || 0) >= 8 ? 'metric-good' :
+                                     (metrics.gps_satellites || 0) >= 4 ? 'metric-warning' : 'metric-critical';
+      }
+
+      const gpsEphElement = document.getElementById("gpsEph");
+      if (gpsEphElement) {
+        gpsEphElement.textContent = (metrics.gps_eph || 0).toFixed(2);
+      }
+
+      const gpsEpvElement = document.getElementById("gpsEpv");
+      if (gpsEpvElement) {
+        gpsEpvElement.textContent = (metrics.gps_epv || 0).toFixed(2);
+      }
+
+      // Attitude (Orientation)
+      const pitchElement = document.getElementById("pitchAngle");
+      if (pitchElement) {
+        pitchElement.textContent = `${(metrics.pitch_degrees || 0).toFixed(1)}°`;
+      }
+
+      const rollElement = document.getElementById("rollAngle");
+      if (rollElement) {
+        rollElement.textContent = `${(metrics.roll_degrees || 0).toFixed(1)}°`;
+      }
+
+      const yawElement = document.getElementById("yawAngle");
+      if (yawElement) {
+        yawElement.textContent = `${(metrics.yaw_degrees || 0).toFixed(1)}°`;
+      }
+
+      // Speed Information
+      const groundSpeedElement = document.getElementById("groundSpeed");
+      if (groundSpeedElement) {
+        groundSpeedElement.textContent = `${(metrics.groundspeed || 0).toFixed(1)} m/s`;
+      }
+
+      const airSpeedElement = document.getElementById("airSpeed");
+      if (airSpeedElement) {
+        airSpeedElement.textContent = `${(metrics.airspeed || 0).toFixed(1)} m/s`;
+      }
+      
+      // Last Heartbeat
+      const heartbeatElement = document.getElementById("lastHeartbeat");
+      if (heartbeatElement) {
+        if (metrics.last_heartbeat && metrics.last_heartbeat > 0) {
+          const secondsAgo = Math.floor(Date.now() / 1000 - metrics.last_heartbeat);
+          heartbeatElement.textContent = secondsAgo < 60 ? `${secondsAgo}s ago` : 'Over 1 min ago';
+          heartbeatElement.className = secondsAgo < 5 ? 'metric-good' : 
+                                      secondsAgo < 15 ? 'metric-warning' : 'metric-critical';
+        } else {
+          heartbeatElement.textContent = 'Never';
+          heartbeatElement.className = 'metric-unknown';
+        }
+      }
     }
 
     function updateSystemLogs() {

@@ -1,7 +1,7 @@
 from flask import Flask, render_template, jsonify, request, Response
-from sdronep.telemetry import get_current_location, connect_vehicle
-from sdronep.gimbal_control import center_camera, set_gimbal_angle, get_angle
-from sdronep.human_detection import get_detector
+from .telemetry import get_current_location, connect_vehicle
+from .gimbal_control import center_camera, set_gimbal_angle, get_angle
+from .human_detection import get_detector
 import os
 import math
 import threading
@@ -300,18 +300,97 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 
 def drone_telemetry_loop():
     """
-    Continuously update drone location in a background thread
+    Continuously update drone location and metrics in a background thread
     """
     log_message("INFO", "SYSTEM", "Drone telemetry loop started")
     while True:
         try:
             if app.config.get('tracking_active', False):
-                drone_lat, drone_lon = get_current_location()
-                app.config['drone_location'] = (drone_lat, drone_lon)
-                log_message("INFO", "DRONE", f"Location updated: {drone_lat:.6f}, {drone_lon:.6f}")
+                vehicle = get_drone_vehicle()
+                if vehicle:
+                    # Update location
+                    drone_lat, drone_lon = get_current_location()
+                    app.config['drone_location'] = (drone_lat, drone_lon)
+                    
+                    # Update comprehensive drone metrics
+                    app.config['drone_metrics'] = {
+                        # Location and altitude
+                        'latitude': drone_lat,
+                        'longitude': drone_lon,
+                        'altitude_relative': getattr(vehicle.location.global_relative_frame, 'alt', 0) or 0,
+                        'altitude_absolute': getattr(vehicle.location.global_frame, 'alt', 0) or 0,
+                        
+                        # Vehicle state
+                        'armed': vehicle.armed,
+                        'is_armable': vehicle.is_armable,
+                        'flight_mode': str(vehicle.mode.name) if vehicle.mode else 'Unknown',
+                        'system_status': str(vehicle.system_status.state) if vehicle.system_status else 'Unknown',
+                        
+                        # Battery info
+                        'battery_voltage': getattr(vehicle.battery, 'voltage', 0) or 0,
+                        'battery_current': getattr(vehicle.battery, 'current', 0) or 0,
+                        'battery_level': getattr(vehicle.battery, 'level', 0) or 0,
+                        
+                        # GPS info
+                        'gps_fix_type': getattr(vehicle.gps_0, 'fix_type', 0) or 0,
+                        'gps_satellites': getattr(vehicle.gps_0, 'satellites_visible', 0) or 0,
+                        'gps_eph': getattr(vehicle.gps_0, 'eph', 0) or 0,
+                        'gps_epv': getattr(vehicle.gps_0, 'epv', 0) or 0,
+                        
+                        # Attitude (orientation)
+                        'pitch': getattr(vehicle.attitude, 'pitch', 0) or 0,
+                        'roll': getattr(vehicle.attitude, 'roll', 0) or 0,
+                        'yaw': getattr(vehicle.attitude, 'yaw', 0) or 0,
+                        
+                        # Velocity
+                        'groundspeed': getattr(vehicle, 'groundspeed', 0) or 0,
+                        'airspeed': getattr(vehicle, 'airspeed', 0) or 0,
+                        
+                        # Connection status
+                        'connection_status': 'Connected',
+                        'last_heartbeat': getattr(vehicle, 'last_heartbeat', 0) or 0,
+                    }
+                    
+                    log_message("INFO", "DRONE", f"Metrics updated - Alt: {app.config['drone_metrics']['altitude_relative']:.1f}m, Armed: {app.config['drone_metrics']['armed']}, Mode: {app.config['drone_metrics']['flight_mode']}")
+                else:
+                    # Vehicle not connected - set default metrics
+                    app.config['drone_metrics'] = {
+                        'connection_status': 'Disconnected',
+                        'armed': False,
+                        'is_armable': False,
+                        'flight_mode': 'Disconnected',
+                        'system_status': 'Disconnected',
+                        'altitude_relative': 0,
+                        'altitude_absolute': 0,
+                        'battery_voltage': 0,
+                        'battery_level': 0,
+                        'gps_fix_type': 0,
+                        'gps_satellites': 0,
+                        'latitude': 0,
+                        'longitude': 0,
+                        'pitch': 0,
+                        'roll': 0,
+                        'yaw': 0,
+                        'groundspeed': 0,
+                        'airspeed': 0,
+                        'last_heartbeat': 0
+                    }
+                    
             time.sleep(2)  # Update every 2 seconds
         except Exception as e:
-            log_message("ERROR", "DRONE", f"Error getting location: {str(e)}")
+            log_message("ERROR", "DRONE", f"Error getting telemetry: {str(e)}")
+            # Set error state metrics
+            app.config['drone_metrics'] = {
+                'connection_status': 'Error',
+                'error_message': str(e),
+                'armed': False,
+                'is_armable': False,
+                'flight_mode': 'Error',
+                'altitude_relative': 0,
+                'altitude_absolute': 0,
+                'battery_level': 0,
+                'gps_satellites': 0
+            }
             time.sleep(5)  # Wait longer on error
 
 @app.route("/")
@@ -385,6 +464,82 @@ def get_drone_location():
     drone_location = app.config.get('drone_location', (0, 0))
     return jsonify({"lat": drone_location[0], "lon": drone_location[1]})
 
+@app.route("/drone/metrics", methods=["GET"])
+def get_drone_metrics():
+    """Get comprehensive drone metrics and telemetry"""
+    drone_metrics = app.config.get('drone_metrics', {
+        'connection_status': 'Not Connected',
+        'armed': False,
+        'is_armable': False,
+        'flight_mode': 'Unknown',
+        'system_status': 'Unknown',
+        'altitude_relative': 0,
+        'altitude_absolute': 0,
+        'battery_voltage': 0,
+        'battery_current': 0,
+        'battery_level': 0,
+        'gps_fix_type': 0,
+        'gps_satellites': 0,
+        'gps_eph': 0,
+        'gps_epv': 0,
+        'pitch': 0,
+        'roll': 0,
+        'yaw': 0,
+        'groundspeed': 0,
+        'airspeed': 0,
+        'last_heartbeat': 0,
+        'latitude': 0,
+        'longitude': 0
+    })
+    
+    # Add interpretive status messages
+    metrics_with_status = drone_metrics.copy()
+    
+    # GPS fix type interpretation
+    gps_fix_names = {
+        0: 'No Fix',
+        1: 'No Fix',
+        2: '2D Fix',
+        3: '3D Fix',
+        4: 'DGPS',
+        5: 'RTK Float',
+        6: 'RTK Fixed'
+    }
+    metrics_with_status['gps_fix_name'] = gps_fix_names.get(drone_metrics.get('gps_fix_type', 0), 'Unknown')
+    
+    # Battery status interpretation
+    battery_level = drone_metrics.get('battery_level', 0)
+    if battery_level > 75:
+        metrics_with_status['battery_status'] = 'Good'
+    elif battery_level > 50:
+        metrics_with_status['battery_status'] = 'Fair'
+    elif battery_level > 25:
+        metrics_with_status['battery_status'] = 'Low'
+    elif battery_level > 0:
+        metrics_with_status['battery_status'] = 'Critical'
+    else:
+        metrics_with_status['battery_status'] = 'Unknown'
+    
+    # Connection health
+    connection_status = drone_metrics.get('connection_status', 'Not Connected')
+    if connection_status == 'Connected':
+        last_heartbeat = drone_metrics.get('last_heartbeat', 0)
+        if time.time() - last_heartbeat < 5:
+            metrics_with_status['connection_health'] = 'Good'
+        elif time.time() - last_heartbeat < 15:
+            metrics_with_status['connection_health'] = 'Fair'
+        else:
+            metrics_with_status['connection_health'] = 'Poor'
+    else:
+        metrics_with_status['connection_health'] = 'Disconnected'
+    
+    # Convert radians to degrees for attitude
+    metrics_with_status['pitch_degrees'] = round(drone_metrics.get('pitch', 0) * 57.2958, 1)  # rad to deg
+    metrics_with_status['roll_degrees'] = round(drone_metrics.get('roll', 0) * 57.2958, 1)
+    metrics_with_status['yaw_degrees'] = round(drone_metrics.get('yaw', 0) * 57.2958, 1)
+    
+    return jsonify(metrics_with_status)
+
 @app.route("/drone/start", methods=["POST"])
 def start_drone_tracking():
     """Start drone telemetry tracking"""
@@ -419,7 +574,7 @@ def get_distance():
 
 @app.route("/status", methods=["GET"])
 def get_status():
-    """Get overall system status"""
+    """Get overall system status including comprehensive drone metrics"""
     user_location = app.config.get('current_location', (0, 0))
     drone_location = app.config.get('drone_location', (0, 0))
     tracking_active = app.config.get('tracking_active', False)
@@ -429,6 +584,27 @@ def get_status():
     location_source = app.config.get('location_source', 'none')
     last_phone_update = app.config.get('last_phone_update', 0)
     gps_udp_active = app.config.get('gps_udp_active', False)
+    
+    # Get comprehensive drone metrics
+    drone_metrics = app.config.get('drone_metrics', {
+        'connection_status': 'Not Connected',
+        'armed': False,
+        'is_armable': False,
+        'flight_mode': 'Unknown',
+        'system_status': 'Unknown',
+        'altitude_relative': 0,
+        'altitude_absolute': 0,
+        'battery_voltage': 0,
+        'battery_level': 0,
+        'gps_fix_type': 0,
+        'gps_satellites': 0,
+        'pitch': 0,
+        'roll': 0,
+        'yaw': 0,
+        'groundspeed': 0,
+        'airspeed': 0,
+        'last_heartbeat': 0
+    })
     
     # Determine GPS status
     if location_source == 'phone':
@@ -479,7 +655,9 @@ def get_status():
         "gps_status": gps_status,
         "gps_health": gps_health,
         "gps_udp_active": gps_udp_active,
-        "phone_gps_active": location_source == 'phone' and (time.time() - last_phone_update) < 30
+        "phone_gps_active": location_source == 'phone' and (time.time() - last_phone_update) < 30,
+        # Comprehensive drone metrics
+        "drone_metrics": drone_metrics
     })
 
 @app.route("/logs", methods=["GET"])
