@@ -8,6 +8,10 @@ import threading
 import time
 import socket
 import re
+import cv2
+import requests
+import numpy as np
+import base64
 from datetime import datetime
 from dronekit import VehicleMode, LocationGlobalRelative
 
@@ -30,6 +34,186 @@ app.config['target_distance'] = 10       # Target ground distance in meters
 app.config['drone_vehicle'] = None       # Drone vehicle connection
 app.config['system_logs'] = []           # System log storage
 app.config['gps_udp_active'] = False     # GPS UDP receiver status
+
+# Global variables for camera system
+detector_instance = None
+gopro_detector_instance = None  # Dedicated detector for GoPro
+camera_auto_started = False
+camera_enabled = False  # Boolean to control camera on/off
+
+# Global variables for GoPro integration
+app.config['gopro_enabled'] = False
+app.config['gopro_ip'] = '10.5.5.9'
+app.config['gopro_streaming'] = False
+app.config['gopro_recording'] = False
+app.config['auto_tracking_enabled'] = False
+app.config['gimbal_tilt_angle'] = 0
+app.config['gopro_stream_thread'] = None
+
+# GoPro Controller Class
+class GoproController:
+    def __init__(self, ip="10.5.5.9"):
+        self.ip = ip
+        self.streaming_url = f"udp://{ip}:8554"
+        self.api_base = f"http://{ip}/gp/gpControl"
+        self.preview_url = f"http://{ip}:8080/live/amba.m3u8"  # GoPro live preview URL
+        
+    def connect(self):
+        """Test connection to GoPro"""
+        try:
+            response = requests.get(f"{self.api_base}/status", timeout=5)
+            return response.status_code == 200
+        except:
+            return False
+    
+    def start_streaming(self):
+        """Start GoPro live streaming with H.264 compatibility settings"""
+        try:
+            # Set streaming resolution to lower setting for better H.264 compatibility
+            response = requests.get(f"{self.api_base}/setting/54/1", timeout=5)  # 1080p
+            time.sleep(0.5)
+            
+            # Set lower bitrate for more stable H.264 stream
+            response = requests.get(f"{self.api_base}/setting/57/1", timeout=5)  # Standard bitrate
+            time.sleep(0.5)
+            
+            # Turn on WiFi streaming mode
+            response = requests.get(f"{self.api_base}/command/wireless/pair/complete?success=1&devicename=Flask", timeout=5)
+            time.sleep(1)
+            
+            # Start preview/streaming with compatibility mode
+            response = requests.get(f"http://{self.ip}:8080/gp/gpControl/execute?p1=gpStream&a1=proto_v2&c1=restart", timeout=5)
+            
+            # Give the stream time to initialize properly for H.264
+            time.sleep(2)
+            
+            return response.status_code == 200
+        except Exception as e:
+            print(f"Streaming start error: {e}")
+            return False
+    
+    def stop_streaming(self):
+        """Stop GoPro streaming"""
+        try:
+            response = requests.get(f"http://{self.ip}:8080/gp/gpControl/execute?p1=gpStream&a1=proto_v2&c1=stop", timeout=5)
+            return response.status_code == 200
+        except:
+            return False
+    
+    def start_recording(self):
+        """Start recording video"""
+        try:
+            response = requests.get(f"{self.api_base}/command/shutter?p=1", timeout=5)
+            return response.status_code == 200
+        except:
+            return False
+    
+    def stop_recording(self):
+        """Stop recording video"""
+        try:
+            response = requests.get(f"{self.api_base}/command/shutter?p=0", timeout=5)
+            return response.status_code == 200
+        except:
+            return False
+    
+    def take_photo(self):
+        """Take a photo"""
+        try:
+            # Switch to photo mode
+            requests.get(f"{self.api_base}/command/mode?p=1", timeout=5)
+            # Take photo
+            response = requests.get(f"{self.api_base}/command/shutter?p=1", timeout=5)
+            return response.status_code == 200
+        except:
+            return False
+
+# Global GoPro controller instance
+gopro_controller = None
+current_gopro_frame = None  # Store the latest frame for single-frame access
+
+def get_current_gopro_frame():
+    """Get the most recent frame from GoPro stream"""
+    global current_gopro_frame
+    return current_gopro_frame
+
+def calculate_bearing(lat1, lon1, lat2, lon2):
+    """Calculate bearing from point 1 to point 2 in degrees"""
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    delta_lon = math.radians(lon2 - lon1)
+    
+    y = math.sin(delta_lon) * math.cos(lat2_rad)
+    x = math.cos(lat1_rad) * math.sin(lat2_rad) - math.sin(lat1_rad) * math.cos(lat2_rad) * math.cos(delta_lon)
+    
+    bearing_rad = math.atan2(y, x)
+    bearing_deg = math.degrees(bearing_rad)
+    
+    # Normalize to 0-360 degrees
+    return (bearing_deg + 360) % 360
+
+def calculate_gimbal_tilt_angle(drone_alt, user_alt, horizontal_distance):
+    """Calculate gimbal tilt angle to center user in frame"""
+    if horizontal_distance <= 0:
+        return 0
+    
+    altitude_diff = drone_alt - user_alt
+    tilt_rad = math.atan2(-altitude_diff, horizontal_distance)  # Negative for downward tilt
+    tilt_deg = math.degrees(tilt_rad)
+    
+    # Clamp to gimbal limits (-90 to +30 degrees)
+    return max(-90, min(30, tilt_deg))
+
+def orient_drone_towards_user():
+    """Orient the drone to face the user and adjust gimbal tilt"""
+    try:
+        user_location = app.config.get('current_location', (0, 0))
+        drone_location = app.config.get('drone_location', (0, 0))
+        vehicle = get_drone_vehicle()
+        
+        if (user_location == (0, 0) or drone_location == (0, 0) or not vehicle or 
+            not app.config.get('auto_tracking_enabled', False)):
+            return
+        
+        user_lat, user_lon = user_location
+        drone_lat, drone_lon = drone_location
+        
+        # Calculate bearing from drone to user
+        bearing = calculate_bearing(drone_lat, drone_lon, user_lat, user_lon)
+        
+        # Calculate horizontal distance
+        horizontal_distance = calculate_distance(drone_lat, drone_lon, user_lat, user_lon)
+        
+        # Get altitudes (assuming user is at ground level for now)
+        drone_metrics = app.config.get('drone_metrics', {})
+        drone_alt = drone_metrics.get('altitude_relative', 0)
+        user_alt = 0  # Ground level assumption
+        
+        # Calculate required gimbal tilt
+        required_tilt = calculate_gimbal_tilt_angle(drone_alt, user_alt, horizontal_distance)
+        
+        # Orient drone towards user (yaw control)
+        if vehicle.mode.name in ['GUIDED', 'AUTO', 'LOITER']:
+            # Convert bearing to radians for MAVLink
+            bearing_rad = math.radians(bearing)
+            
+            # Create a location slightly ahead in the direction of the user
+            # This will make the drone face towards the user
+            offset_distance = 5  # 5 meters ahead
+            offset_lat = drone_lat + (offset_distance / 111000) * math.cos(bearing_rad)
+            offset_lon = drone_lon + (offset_distance / (111000 * math.cos(math.radians(drone_lat)))) * math.sin(bearing_rad)
+            
+            # Command drone to face this direction
+            target_location = LocationGlobalRelative(offset_lat, offset_lon, drone_alt)
+            vehicle.simple_goto(target_location)
+        
+        # Update gimbal tilt to center user
+        app.config['gimbal_tilt_angle'] = required_tilt
+        set_gimbal_angle(required_tilt)
+        
+        log_message("INFO", "TRACKING", f"Oriented drone: bearing {bearing:.1f}°, gimbal tilt {required_tilt:.1f}°")
+        
+    except Exception as e:
+        log_message("ERROR", "TRACKING", f"Failed to orient drone: {str(e)}")
 
 # Global variables for camera system
 detector_instance = None
@@ -95,7 +279,7 @@ def auto_start_camera():
                 if detector.is_running:
                     log_message("SUCCESS", "CAMERA", "Camera auto-started for continuous live streaming")
                     camera_auto_started = True
-                    print("✅ Camera live stream ready at http://localhost:5000")
+                    print("✅ Camera live stream ready at http://localhost:3000")
                     return
             
             # If we reach here, camera didn't start properly
@@ -642,8 +826,8 @@ def get_status():
         "follow_mode": follow_mode,
         "target_elevation": target_elevation,
         "target_distance": target_distance,
-        "camera_running": camera_running,
-        "camera_enabled": camera_enabled,
+        "camera_running": False,  # Laptop camera disabled - using GoPro
+        "camera_enabled": False,  # Laptop camera disabled - using GoPro
         "user_location": {"lat": user_location[0], "lon": user_location[1]},
         "drone_location": {"lat": drone_location[0], "lon": drone_location[1]},
         "distance_meters": round(distance, 2),
@@ -657,7 +841,13 @@ def get_status():
         "gps_udp_active": gps_udp_active,
         "phone_gps_active": location_source == 'phone' and (time.time() - last_phone_update) < 30,
         # Comprehensive drone metrics
-        "drone_metrics": drone_metrics
+        "drone_metrics": drone_metrics,
+        # GoPro status
+        "gopro_enabled": app.config.get('gopro_enabled', False),
+        "gopro_streaming": app.config.get('gopro_streaming', False),
+        "gopro_recording": app.config.get('gopro_recording', False),
+        "auto_tracking_enabled": app.config.get('auto_tracking_enabled', False),
+        "gimbal_tilt_angle": app.config.get('gimbal_tilt_angle', 0)
     })
 
 @app.route("/logs", methods=["GET"])
@@ -981,6 +1171,10 @@ def drone_follow_loop():
                         
                         # Update gimbal angle
                         update_gimbal_for_tracking()
+                        
+                        # Auto-orient drone towards user if enabled
+                        if app.config.get('auto_tracking_enabled', False):
+                            orient_drone_towards_user()
                     else:
                         log_message("WARNING", "FOLLOW", "No vehicle connection - retrying...")
                 else:
@@ -991,23 +1185,627 @@ def drone_follow_loop():
             log_message("ERROR", "FOLLOW", f"Follow loop error: {str(e)}")
             time.sleep(5)
 
+# GoPro Integration Routes
+
+@app.route("/gopro/connect", methods=["POST"])
+def connect_gopro():
+    """Connect to GoPro camera"""
+    try:
+        data = request.get_json()
+        gopro_ip = data.get('ip', '10.5.5.9')
+        
+        global gopro_controller
+        gopro_controller = GoproController(gopro_ip)
+        
+        if gopro_controller.connect():
+            app.config['gopro_enabled'] = True
+            app.config['gopro_ip'] = gopro_ip
+            log_message("SUCCESS", "GOPRO", f"Connected to GoPro at {gopro_ip}")
+            return jsonify({"status": "Connected to GoPro", "ip": gopro_ip})
+        else:
+            log_message("ERROR", "GOPRO", f"Failed to connect to GoPro at {gopro_ip}")
+            return jsonify({"error": "Failed to connect to GoPro"}), 500
+            
+    except Exception as e:
+        log_message("ERROR", "GOPRO", f"GoPro connection error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/gopro/disconnect", methods=["POST"])
+def disconnect_gopro():
+    """Disconnect from GoPro camera"""
+    try:
+        global gopro_controller
+        app.config['gopro_enabled'] = False
+        app.config['gopro_streaming'] = False
+        app.config['gopro_recording'] = False
+        gopro_controller = None
+        
+        log_message("INFO", "GOPRO", "Disconnected from GoPro")
+        return jsonify({"status": "Disconnected from GoPro"})
+        
+    except Exception as e:
+        log_message("ERROR", "GOPRO", f"GoPro disconnection error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/gopro/stream/start", methods=["POST"])
+def start_gopro_streaming():
+    """Start GoPro live streaming"""
+    try:
+        global gopro_controller
+        if not gopro_controller or not app.config.get('gopro_enabled', False):
+            return jsonify({"error": "GoPro not connected"}), 400
+            
+        if gopro_controller.start_streaming():
+            app.config['gopro_streaming'] = True
+            log_message("SUCCESS", "GOPRO", "Started GoPro streaming")
+            return jsonify({"status": "GoPro streaming started"})
+        else:
+            log_message("ERROR", "GOPRO", "Failed to start GoPro streaming")
+            return jsonify({"error": "Failed to start streaming"}), 500
+            
+    except Exception as e:
+        log_message("ERROR", "GOPRO", f"Streaming start error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/gopro/stream/stop", methods=["POST"])
+def stop_gopro_streaming():
+    """Stop GoPro live streaming"""
+    try:
+        global gopro_controller
+        if not gopro_controller:
+            return jsonify({"error": "GoPro not connected"}), 400
+            
+        if gopro_controller.stop_streaming():
+            app.config['gopro_streaming'] = False
+            log_message("INFO", "GOPRO", "Stopped GoPro streaming")
+            return jsonify({"status": "GoPro streaming stopped"})
+        else:
+            log_message("WARNING", "GOPRO", "Failed to stop GoPro streaming")
+            return jsonify({"error": "Failed to stop streaming"}), 500
+            
+    except Exception as e:
+        log_message("ERROR", "GOPRO", f"Streaming stop error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/gopro/record/start", methods=["POST"])
+def start_gopro_recording():
+    """Start GoPro video recording"""
+    try:
+        global gopro_controller
+        if not gopro_controller or not app.config.get('gopro_enabled', False):
+            return jsonify({"error": "GoPro not connected"}), 400
+            
+        if gopro_controller.start_recording():
+            app.config['gopro_recording'] = True
+            log_message("SUCCESS", "GOPRO", "Started GoPro recording")
+            return jsonify({"status": "GoPro recording started"})
+        else:
+            log_message("ERROR", "GOPRO", "Failed to start GoPro recording")
+            return jsonify({"error": "Failed to start recording"}), 500
+            
+    except Exception as e:
+        log_message("ERROR", "GOPRO", f"Recording start error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/gopro/record/stop", methods=["POST"])
+def stop_gopro_recording():
+    """Stop GoPro video recording"""
+    try:
+        global gopro_controller
+        if not gopro_controller:
+            return jsonify({"error": "GoPro not connected"}), 400
+            
+        if gopro_controller.stop_recording():
+            app.config['gopro_recording'] = False
+            log_message("INFO", "GOPRO", "Stopped GoPro recording")
+            return jsonify({"status": "GoPro recording stopped"})
+        else:
+            log_message("WARNING", "GOPRO", "Failed to stop GoPro recording")
+            return jsonify({"error": "Failed to stop recording"}), 500
+            
+    except Exception as e:
+        log_message("ERROR", "GOPRO", f"Recording stop error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/gopro/photo", methods=["POST"])
+def take_gopro_photo():
+    """Take a photo with GoPro"""
+    try:
+        global gopro_controller
+        if not gopro_controller or not app.config.get('gopro_enabled', False):
+            return jsonify({"error": "GoPro not connected"}), 400
+            
+        if gopro_controller.take_photo():
+            log_message("SUCCESS", "GOPRO", "Took GoPro photo")
+            return jsonify({"status": "Photo taken with GoPro"})
+        else:
+            log_message("ERROR", "GOPRO", "Failed to take GoPro photo")
+            return jsonify({"error": "Failed to take photo"}), 500
+            
+    except Exception as e:
+        log_message("ERROR", "GOPRO", f"Photo capture error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+def get_gopro_detector():
+    """Get or create the GoPro detector instance - TEMPORARILY DISABLED FOR PERFORMANCE"""
+    global gopro_detector_instance
+    # Temporarily disable YOLO detector to test stream performance
+    log_message("INFO", "GOPRO", "YOLO detector temporarily disabled for stream performance testing")
+    return None
+
+def generate_gopro_stream():
+    """Generator function for GoPro video stream with improved reliability and human detection"""
+    global gopro_controller
+    
+    if not gopro_controller or not app.config.get('gopro_enabled', False):
+        return
+        
+    cap = None
+    retry_count = 0
+    max_retries = 5
+    detector = get_gopro_detector()  # Use shared detector instance
+    
+    try:
+        log_message("INFO", "GOPRO", "Starting GoPro stream with shared detector")
+        
+        while app.config.get('gopro_streaming', False) and retry_count < max_retries:
+            try:
+                if cap is None:
+                    log_message("INFO", "GOPRO", f"Opening stream (attempt {retry_count + 1}/{max_retries})")
+                    
+                    # Try different stream URLs with H.264 decoder fixes and alternatives
+                    stream_urls = [
+                        # Try UDP stream first (more reliable for GoPro)
+                        f"udp://@0.0.0.0:8554",
+                        # Try RTSP with timeout settings
+                        f"rtsp://{gopro_controller.ip}:554/live",
+                        # Try HTTP live stream (alternative)
+                        f"http://{gopro_controller.ip}:8080/live/amba.m3u8"
+                    ]
+                    
+                    for url in stream_urls:
+                        log_message("INFO", "GOPRO", f"Trying stream URL: {url}")
+                        
+                        # Use different backends for different URL types with timeout settings
+                        if url.startswith("udp://"):
+                            cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+                        elif url.startswith("rtsp://"):
+                            cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+                            # Set RTSP timeout to prevent hanging
+                            cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000)  # 10 second timeout
+                            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)   # 5 second read timeout
+                        else:
+                            cap = cv2.VideoCapture(url)
+                            
+                        if cap and cap.isOpened():
+                            # H.264 decoder optimizations
+                            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)      # Minimal buffer to prevent buildup
+                            cap.set(cv2.CAP_PROP_FPS, 15)           # Lower FPS for stability
+                            
+                            # Don't force MJPG codec for H.264 streams
+                            # Let OpenCV handle codec detection automatically
+                            
+                            # Additional settings for H.264 streams
+                            cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)    # Ensure RGB conversion
+                            
+                            # Test if we can actually read frames (try multiple times for H.264)
+                            for test_attempt in range(5):
+                                test_ret, test_frame = cap.read()
+                                if test_ret and test_frame is not None and test_frame.size > 0:
+                                    log_message("SUCCESS", "GOPRO", f"Successfully connected to: {url}")
+                                    break
+                                time.sleep(0.2)  # Small delay between test attempts
+                            
+                            if test_ret and test_frame is not None and test_frame.size > 0:
+                                break
+                            else:
+                                log_message("WARNING", "GOPRO", f"Failed to read test frame from: {url}")
+                                cap.release()
+                                cap = None
+                        elif cap:
+                            cap.release()
+                            cap = None
+                    
+                    if not cap or not cap.isOpened():
+                        log_message("ERROR", "GOPRO", f"Failed to open stream on attempt {retry_count + 1}")
+                        retry_count += 1
+                        time.sleep(3)  # Longer wait between retries
+                        continue
+                    
+                    log_message("SUCCESS", "GOPRO", "GoPro video stream opened successfully")
+                
+                frame_count = 0
+                last_frame_time = time.time()
+                consecutive_failures = 0
+                
+                while app.config.get('gopro_streaming', False):
+                    try:
+                        ret, frame = cap.read()
+                        
+                        if not ret or frame is None or frame.size == 0:
+                            consecutive_failures += 1
+                            if consecutive_failures >= 15:  # Increased threshold for H.264 streams
+                                log_message("WARNING", "GOPRO", f"Too many consecutive frame failures ({consecutive_failures}) - likely H.264 decoding issues")
+                                break
+                            
+                            # For H.264 streams, sometimes frames are dropped - wait a bit longer
+                            time.sleep(0.2)
+                            continue
+                        
+                        # Validate frame dimensions (H.264 can sometimes return invalid frames)
+                        if len(frame.shape) != 3 or frame.shape[0] < 10 or frame.shape[1] < 10:
+                            consecutive_failures += 1
+                            log_message("WARNING", "GOPRO", f"Invalid frame dimensions: {frame.shape}")
+                            continue
+                        
+                        # Reset failure counter on successful read
+                        consecutive_failures = 0
+                        
+                        # Check for stream timeout
+                        current_time = time.time()
+                        if current_time - last_frame_time > 10:  # Extended timeout
+                            log_message("WARNING", "GOPRO", "Stream timeout - restarting")
+                            break
+                        
+                        last_frame_time = current_time
+                        frame_count += 1
+                        
+                        # Process every 5th frame for better performance (was every 3rd)
+                        if frame_count % 5 != 0:
+                            continue
+                        
+                        # Resize frame more aggressively for performance
+                        height, width = frame.shape[:2]
+                        if width > 640:  # Smaller resolution for speed
+                            scale = 640 / width
+                            new_width = int(width * scale)
+                            new_height = int(height * scale)
+                            frame = cv2.resize(frame, (new_width, new_height))
+                        
+                        # LIGHTWEIGHT MODE: Skip YOLO processing for now to get stream working
+                        processed_frame = frame.copy()
+                        
+                        # Store current frame for single-frame access
+                        global current_gopro_frame
+                        current_gopro_frame = processed_frame.copy()
+                        
+                        # Debug: Log frame capture success periodically
+                        if frame_count % 50 == 0:  # Every 50th frame
+                            log_message("INFO", "GOPRO", f"Frame capture working - {frame_count} frames processed, resolution: {frame.shape}")
+                        
+                        # Add basic stream info overlay (lightweight)
+                        cv2.putText(processed_frame, f"GoPro Live - Frame {frame_count}", 
+                                  (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                        cv2.putText(processed_frame, f"Time: {time.strftime('%H:%M:%S')}", 
+                                  (10, processed_frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                        cv2.putText(processed_frame, "YOLO Detection Temporarily Disabled for Performance", 
+                                  (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                        
+                        # Encode frame with faster settings
+                        encode_params = [cv2.IMWRITE_JPEG_QUALITY, 60]  # Lower quality for speed
+                        ret, buffer = cv2.imencode('.jpg', processed_frame, encode_params)
+                        
+                        if ret:
+                            frame_bytes = buffer.tobytes()
+                            yield (b'--frame\r\n'
+                                   b'Content-Type: image/jpeg\r\n'
+                                   b'Content-Length: ' + f"{len(frame_bytes)}".encode() + b'\r\n\r\n' + frame_bytes + b'\r\n')
+                        else:
+                            log_message("WARNING", "GOPRO", "Failed to encode frame")
+                            
+                    except Exception as inner_e:
+                        log_message("ERROR", "GOPRO", f"Inner loop error: {str(inner_e)}")
+                        consecutive_failures += 1
+                        if consecutive_failures >= 15:
+                            break
+                        time.sleep(0.1)  # Shorter delay for better responsiveness
+                
+                # Clean up and potentially retry
+                if cap:
+                    cap.release()
+                    cap = None
+                
+                if app.config.get('gopro_streaming', False):  # Stream still requested but failed
+                    retry_count += 1
+                    log_message("WARNING", "GOPRO", f"Stream interrupted, retrying ({retry_count}/{max_retries})")
+                    time.sleep(2)
+                else:
+                    break  # Stream was intentionally stopped
+                    
+            except Exception as stream_error:
+                log_message("ERROR", "GOPRO", f"Stream error: {str(stream_error)}")
+                if cap:
+                    cap.release()
+                    cap = None
+                retry_count += 1
+                time.sleep(3)
+        
+        if retry_count >= max_retries:
+            log_message("ERROR", "GOPRO", f"Stream failed after {max_retries} attempts")
+            app.config['gopro_streaming'] = False
+            
+        if cap:
+            cap.release()
+        log_message("INFO", "GOPRO", "GoPro video stream closed")
+        
+    except Exception as e:
+        log_message("ERROR", "GOPRO", f"Stream generation error: {str(e)}")
+        if cap:
+            cap.release()
+
+@app.route("/gopro/stream/feed")
+def gopro_stream_feed():
+    """GoPro video stream feed endpoint with improved error handling"""
+    if not app.config.get('gopro_streaming', False):
+        return jsonify({"error": "GoPro streaming not active"}), 400
+        
+    if not gopro_controller or not app.config.get('gopro_enabled', False):
+        return jsonify({"error": "GoPro not connected"}), 400
+    
+    try:
+        response = Response(generate_gopro_stream(),
+                          mimetype='multipart/x-mixed-replace; boundary=frame')
+        
+        # Add headers to prevent caching and improve streaming
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        response.headers['Connection'] = 'close'
+        
+        return response
+        
+    except Exception as e:
+        log_message("ERROR", "GOPRO", f"Stream feed error: {str(e)}")
+        return jsonify({"error": "Stream feed error"}), 500
+
+@app.route("/gopro/stream/frame")
+def gopro_single_frame():
+    """Get a single frame from GoPro stream as base64 - better browser compatibility"""
+    if not app.config.get('gopro_streaming', False):
+        return jsonify({"error": "GoPro streaming not active", "frame": None}), 200
+        
+    if not gopro_controller or not app.config.get('gopro_enabled', False):
+        return jsonify({"error": "GoPro not connected", "frame": None}), 200
+    
+    try:
+        # Get current frame from the stream
+        frame = get_current_gopro_frame()
+        
+        if frame is not None:
+            # Encode frame as base64 JPEG
+            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            frame_b64 = base64.b64encode(buffer).decode('utf-8')
+            
+            return jsonify({
+                "frame": f"data:image/jpeg;base64,{frame_b64}",
+                "timestamp": time.time(),
+                "status": "OK"
+            })
+        else:
+            return jsonify({
+                "error": "No frame available",
+                "frame": None,
+                "status": "NO_FRAME"
+            })
+        
+    except Exception as e:
+        log_message("ERROR", "GOPRO", f"Single frame error: {str(e)}")
+        return jsonify({"error": str(e), "frame": None}), 200
+
+@app.route("/gopro/stream/health", methods=["GET"])
+def gopro_stream_health():
+    """Check GoPro stream health"""
+    try:
+        health_status = {
+            "streaming": app.config.get('gopro_streaming', False),
+            "connected": app.config.get('gopro_enabled', False),
+            "ip": app.config.get('gopro_ip', 'unknown'),
+            "timestamp": time.time()
+        }
+        
+        # Test connection if enabled
+        if gopro_controller and app.config.get('gopro_enabled', False):
+            try:
+                response = requests.get(f"http://{gopro_controller.ip}:8080/gp/gpControl/status", timeout=2)
+                health_status["api_responsive"] = response.status_code == 200
+            except:
+                health_status["api_responsive"] = False
+        else:
+            health_status["api_responsive"] = False
+        
+        return jsonify(health_status)
+        
+    except Exception as e:
+        log_message("ERROR", "GOPRO", f"Health check error: {str(e)}")
+        return jsonify({"error": "Health check failed"}), 500
+
+# GoPro Human Detection Endpoints (replacing laptop camera functionality)
+@app.route("/gopro/detections", methods=["GET"])
+def get_gopro_detections():
+    """Get current human detections from GoPro stream"""
+    try:
+        if not app.config.get('gopro_streaming', False):
+            return jsonify({
+                "detections": [],
+                "locked_person": None,
+                "show_boxes": True,
+                "error": "GoPro streaming not active"
+            }), 400
+            
+        # Get the shared detector instance
+        detector = get_gopro_detector()
+        if detector and hasattr(detector, 'current_detections'):
+            detections = detector.current_detections or []
+            return jsonify({
+                "detections": [
+                    {
+                        "id": i,
+                        "confidence": det.get("confidence", 0.0),
+                        "bbox": det.get("bbox", [0, 0, 0, 0])
+                    } for i, det in enumerate(detections)
+                ],
+                "locked_person": getattr(detector, 'locked_person_id', None),
+                "show_boxes": getattr(detector, 'show_boxes', True)
+            })
+        else:
+            return jsonify({
+                "detections": [],
+                "locked_person": None,
+                "show_boxes": True
+            })
+            
+    except Exception as e:
+        log_message("ERROR", "GOPRO", f"Detection error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/gopro/lock/<int:person_id>", methods=["POST"])
+def lock_gopro_person(person_id):
+    """Lock onto a person detected in GoPro feed"""
+    try:
+        if not app.config.get('gopro_streaming', False):
+            return jsonify({"error": "GoPro streaming not active"}), 400
+            
+        # Get the shared detector instance
+        detector = get_gopro_detector()
+        if detector and hasattr(detector, 'lock_person'):
+            result = detector.lock_person(person_id)
+            if result:
+                log_message("SUCCESS", "GOPRO", f"Locked onto person {person_id} in GoPro feed")
+                return jsonify({"status": f"Locked onto person {person_id}"})
+            else:
+                return jsonify({"error": f"Could not lock onto person {person_id}"}), 400
+        else:
+            return jsonify({"error": "Lock functionality not available"}), 500
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/gopro/unlock", methods=["POST"])
+def unlock_gopro_person():
+    """Unlock from current person in GoPro feed"""
+    try:
+        if not app.config.get('gopro_streaming', False):
+            return jsonify({"error": "GoPro streaming not active"}), 400
+            
+        # Get the shared detector instance
+        detector = get_gopro_detector()
+        if detector and hasattr(detector, 'unlock_person'):
+            detector.unlock_person()
+            log_message("INFO", "GOPRO", "Unlocked from person in GoPro feed")
+            return jsonify({"status": "Unlocked from person"})
+        else:
+            return jsonify({"error": "Unlock functionality not available"}), 500
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/gopro/toggle_boxes", methods=["POST"])
+def toggle_gopro_boxes():
+    """Toggle bounding box display in GoPro feed"""
+    try:
+        if not app.config.get('gopro_streaming', False):
+            return jsonify({"error": "GoPro streaming not active"}), 400
+            
+        # Get the shared detector instance
+        detector = get_gopro_detector()
+        if detector and hasattr(detector, 'toggle_boxes'):
+            detector.toggle_boxes()
+            show_boxes = getattr(detector, 'show_boxes', False)
+            log_message("INFO", "GOPRO", f"Toggled bounding boxes: {'ON' if show_boxes else 'OFF'}")
+            return jsonify({"status": f"Bounding boxes {'enabled' if show_boxes else 'disabled'}"})
+        else:
+            return jsonify({"error": "Box toggle functionality not available"}), 500
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/tracking/auto/enable", methods=["POST"])
+def enable_auto_tracking():
+    """Enable automatic drone orientation and gimbal tracking"""
+    try:
+        app.config['auto_tracking_enabled'] = True
+        log_message("SUCCESS", "TRACKING", "Auto-tracking enabled - drone will face user")
+        return jsonify({"status": "Auto-tracking enabled"})
+        
+    except Exception as e:
+        log_message("ERROR", "TRACKING", f"Failed to enable auto-tracking: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/tracking/auto/disable", methods=["POST"])
+def disable_auto_tracking():
+    """Disable automatic drone orientation and gimbal tracking"""
+    try:
+        app.config['auto_tracking_enabled'] = False
+        log_message("INFO", "TRACKING", "Auto-tracking disabled")
+        return jsonify({"status": "Auto-tracking disabled"})
+        
+    except Exception as e:
+        log_message("ERROR", "TRACKING", f"Failed to disable auto-tracking: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/gimbal/tilt", methods=["POST"])
+def update_gimbal_tilt():
+    """Manually update gimbal tilt angle"""
+    try:
+        data = request.get_json()
+        tilt_angle = data.get('angle', 0)
+        
+        # Clamp angle to valid range
+        tilt_angle = max(-90, min(30, float(tilt_angle)))
+        
+        app.config['gimbal_tilt_angle'] = tilt_angle
+        set_gimbal_angle(tilt_angle)
+        
+        log_message("INFO", "GIMBAL", f"Manual gimbal tilt set to {tilt_angle}°")
+        return jsonify({"status": "Gimbal tilt updated", "angle": tilt_angle})
+        
+    except Exception as e:
+        log_message("ERROR", "GIMBAL", f"Failed to update gimbal tilt: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/gimbal/center", methods=["POST"])
+def center_gimbal():
+    """Center the gimbal (0 degrees tilt)"""
+    try:
+        app.config['gimbal_tilt_angle'] = 0
+        set_gimbal_angle(0)
+        center_camera()  # Use existing center function
+        
+        log_message("INFO", "GIMBAL", "Gimbal centered")
+        return jsonify({"status": "Gimbal centered", "angle": 0})
+        
+    except Exception as e:
+        log_message("ERROR", "GIMBAL", f"Failed to center gimbal: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/gopro/status", methods=["GET"])
+def get_gopro_status():
+    """Get current GoPro and tracking status"""
+    try:
+        return jsonify({
+            "gopro_enabled": app.config.get('gopro_enabled', False),
+            "gopro_ip": app.config.get('gopro_ip', '10.5.5.9'),
+            "gopro_streaming": app.config.get('gopro_streaming', False),
+            "gopro_recording": app.config.get('gopro_recording', False),
+            "auto_tracking_enabled": app.config.get('auto_tracking_enabled', False),
+            "gimbal_tilt_angle": app.config.get('gimbal_tilt_angle', 0)
+        })
+        
+    except Exception as e:
+        log_message("ERROR", "GOPRO", f"Failed to get GoPro status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 # Camera and Human Detection Routes
 
 @app.route("/camera/status", methods=["GET"])
 def get_camera_status():
-    """Get current camera status"""
-    global detector_instance, camera_enabled
-    if detector_instance is None:
-        return jsonify({
-            "camera_running": False, 
-            "camera_enabled": camera_enabled,
-            "message": "Camera not initialized"
-        })
-    
+    """Camera functionality moved to GoPro feed"""
     return jsonify({
-        "camera_running": detector_instance.is_running,
-        "camera_enabled": camera_enabled,
-        "message": "Camera live stream active" if detector_instance.is_running else "Camera stopped"
+        "camera_running": False, 
+        "camera_enabled": False,
+        "message": "Human detection moved to GoPro feed. Start GoPro streaming for detection.",
+        "gopro_streaming": app.config.get('gopro_streaming', False),
+        "gopro_enabled": app.config.get('gopro_enabled', False)
     })
 
 @app.route("/camera/enable", methods=["POST"])
@@ -1055,31 +1853,15 @@ def disable_camera():
 
 @app.route("/camera/toggle", methods=["POST"])
 def toggle_camera():
-    """Toggle camera on/off"""
-    try:
-        global camera_enabled
-        camera_enabled = not camera_enabled
-        
-        if camera_enabled:
-            log_message("SUCCESS", "CAMERA", "Camera toggled ON")
-            # Start camera if enabled
-            auto_start_camera()
-            status_msg = "Camera enabled and starting"
-        else:
-            log_message("INFO", "CAMERA", "Camera toggled OFF")
-            # Stop camera if disabled
-            cleanup_detector()
-            status_msg = "Camera disabled and stopped"
-        
-        return jsonify({
-            "status": status_msg,
-            "camera_enabled": camera_enabled,
-            "camera_running": detector_instance.is_running if detector_instance else False
-        })
-        
-    except Exception as e:
-        log_message("ERROR", "CAMERA", f"Failed to toggle camera: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+    """Camera functionality has been moved to GoPro feed"""
+    log_message("INFO", "CAMERA", "Camera toggle request - redirecting to GoPro functionality")
+    
+    return jsonify({
+        "error": "Laptop camera disabled. Human detection now uses GoPro feed. Start GoPro streaming instead.",
+        "camera_enabled": False,
+        "camera_running": False,
+        "message": "Use GoPro streaming for human detection and tracking"
+    }), 400
 
 @app.route("/camera/restart", methods=["POST"])
 def restart_camera():
@@ -1296,6 +2078,6 @@ if __name__ == "__main__":
     print("🚀 Starting Drone Control System")
     print("📹 Camera controls available on interface")
     print("📱 GPS UDP receiver listening on port 11123 for phone GPS")
-    print("🌐 Access the interface at: http://localhost:5000")
+    print("🌐 Access the interface at: http://localhost:3000")
     
-    app.run(debug=False, host='127.0.0.1', port=5000)
+    app.run(debug=False, host='127.0.0.1', port=3000)

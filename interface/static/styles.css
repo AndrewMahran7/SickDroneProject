@@ -829,3 +829,179 @@ button:disabled, .button:disabled {
     max-width: 200px;
   }
 }
+
+/* GoPro Integration Styles */
+.gopro-status {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.recording-status {
+  margin-top: 10px;
+  font-weight: bold;
+}
+
+.status-recording {
+  color: #e74c3c;
+  animation: recording-pulse 2s infinite;
+}
+
+@keyframes recording-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.tracking-status {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.gimbal-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.video-container {
+  text-align: center;
+  margin-top: 15px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 2px solid #dee2e6;
+}
+
+.video-container h3 {
+  color: #495057;
+  margin-bottom: 10px;
+  font-size: 1.1rem;
+}
+
+.video-container img {
+  display: block;
+  margin: 0 auto;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  transition: transform 0.3s ease;
+}
+
+.video-container img:hover {
+  transform: scale(1.02);
+}
+
+.stream-status {
+  margin-top: 10px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.streaming-active {
+  color: #28a745;
+  background-color: rgba(40, 167, 69, 0.1);
+  border: 1px solid rgba(40, 167, 69, 0.3);
+}
+
+.gimbal-controls input[type="range"] {
+  flex: 1;
+  min-width: 200px;
+}
+
+.gimbal-controls span {
+  min-width: 40px;
+  text-align: center;
+  font-weight: bold;
+  color: #3498db;
+}
+
+/* Enhanced status colors */
+.status-success {
+  color: #27ae60;
+  background-color: rgba(39, 174, 96, 0.1);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.status-warning {
+  color: #f39c12;
+  background-color: rgba(243, 156, 18, 0.1);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.status-error {
+  color: #e74c3c;
+  background-color: rgba(231, 76, 60, 0.1);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.status-info {
+  color: #3498db;
+  background-color: rgba(52, 152, 219, 0.1);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+/* Button state improvements */
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+/* GoPro Live Feed Styles */
+#goproFeedContainer {
+  display: none;
+  margin-top: 20px;
+  text-align: center;
+  border: 2px solid #333;
+  border-radius: 10px;
+  padding: 20px;
+  background-color: #f9f9f9;
+}
+
+#goproFeedContainer h3 {
+  margin-top: 0;
+  color: #333;
+  font-size: 1.4em;
+  margin-bottom: 15px;
+}
+
+#goproFeed {
+  max-width: 100%;
+  height: auto;
+  border-radius: 5px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+#streamStatus {
+  margin-top: 10px;
+  font-weight: bold;
+  font-size: 1.1em;
+  color: #666;
+  padding: 5px 10px;
+  border-radius: 5px;
+  display: inline-block;
+}
+
+#streamStatus.streaming-active {
+  color: #2d8e2d;
+  background-color: #e8f5e8;
+}
+
+#streamStatus.stream-error {
+  color: #c73e1d;
+  background-color: #fdeaea;
+}
