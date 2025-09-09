@@ -1,4 +1,5 @@
 from flask import Flask, render_template, jsonify, request, Response
+from flask_cors import CORS
 from .telemetry import get_current_location, connect_vehicle
 from .gimbal_control import center_camera, set_gimbal_angle, get_angle
 from .human_detection import get_detector
@@ -21,6 +22,7 @@ template_dir = os.path.join(interface_dir, 'templates')
 static_dir = os.path.join(interface_dir, 'static')
 
 app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
+CORS(app)  # Enable CORS for all routes
 
 # Global variables to store locations and tracking state
 app.config['current_location'] = (0, 0)  # User location
@@ -464,23 +466,32 @@ def calculate_distance(lat1, lon1, lat2, lon2):
     on the earth (specified in decimal degrees)
     Returns distance in meters
     """
+    # Check for None values
+    if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
+        return 0
+    
+    # Check for zero coordinates
     if lat1 == 0 and lon1 == 0:
         return 0
     if lat2 == 0 and lon2 == 0:
         return 0
     
-    # Convert decimal degrees to radians
-    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
-    
-    # Haversine formula
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
-    c = 2 * math.asin(math.sqrt(a))
-    
-    # Radius of earth in meters
-    r = 6371000
-    return c * r
+    try:
+        # Convert decimal degrees to radians
+        lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+        
+        # Haversine formula
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+        c = 2 * math.asin(math.sqrt(a))
+        
+        # Radius of earth in meters
+        r = 6371000
+        return c * r
+    except (TypeError, ValueError) as e:
+        log_message("ERROR", "SYSTEM", f"Distance calculation error: {e}")
+        return 0
 
 def drone_telemetry_loop():
     """
@@ -492,15 +503,19 @@ def drone_telemetry_loop():
             if app.config.get('tracking_active', False):
                 vehicle = get_drone_vehicle()
                 if vehicle:
-                    # Update location
+                    # Update location with None checks
                     drone_lat, drone_lon = get_current_location()
-                    app.config['drone_location'] = (drone_lat, drone_lon)
+                    # Ensure we have valid coordinates
+                    if drone_lat is not None and drone_lon is not None:
+                        app.config['drone_location'] = (drone_lat, drone_lon)
+                    else:
+                        app.config['drone_location'] = (0, 0)
                     
-                    # Update comprehensive drone metrics
+                    # Update comprehensive drone metrics with None checks
                     app.config['drone_metrics'] = {
                         # Location and altitude
-                        'latitude': drone_lat,
-                        'longitude': drone_lon,
+                        'latitude': drone_lat or 0,
+                        'longitude': drone_lon or 0,
                         'altitude_relative': getattr(vehicle.location.global_relative_frame, 'alt', 0) or 0,
                         'altitude_absolute': getattr(vehicle.location.global_frame, 'alt', 0) or 0,
                         
@@ -744,10 +759,14 @@ def get_distance():
     user_location = app.config.get('current_location', (0, 0))
     drone_location = app.config.get('drone_location', (0, 0))
     
-    distance = calculate_distance(
-        user_location[0], user_location[1],
-        drone_location[0], drone_location[1]
-    )
+    try:
+        distance = calculate_distance(
+            user_location[0], user_location[1],
+            drone_location[0], drone_location[1]
+        )
+    except Exception as e:
+        log_message("ERROR", "SYSTEM", f"Distance calculation failed: {e}")
+        distance = 0
     
     return jsonify({
         "user_location": {"lat": user_location[0], "lon": user_location[1]},
@@ -816,10 +835,15 @@ def get_status():
     global detector_instance, camera_enabled
     camera_running = detector_instance is not None and detector_instance.is_running
     
-    distance = calculate_distance(
-        user_location[0], user_location[1],
-        drone_location[0], drone_location[1]
-    )
+    # Safely calculate distance with None checks
+    try:
+        distance = calculate_distance(
+            user_location[0], user_location[1],
+            drone_location[0], drone_location[1]
+        )
+    except Exception as e:
+        log_message("ERROR", "SYSTEM", f"Distance calculation failed: {e}")
+        distance = 0
     
     return jsonify({
         "tracking_active": tracking_active,
@@ -1013,6 +1037,45 @@ def drone_land():
         log_message("ERROR", "DRONE", f"Landing error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/drone/disable_safety", methods=["POST"])
+def disable_safety_switch():
+    """Disable safety switch for SITL/testing"""
+    try:
+        log_message("INFO", "DRONE", "Disabling safety switch for SITL")
+        
+        # Get drone vehicle
+        vehicle = get_drone_vehicle()
+        if not vehicle:
+            log_message("ERROR", "DRONE", "Failed to connect to vehicle for safety disable")
+            return jsonify({"error": "Failed to connect to drone"}), 500
+        
+        # Disable safety switch
+        log_message("INFO", "DRONE", "Setting BRD_SAFETYENABLE = 0")
+        vehicle.parameters['BRD_SAFETYENABLE'] = 0
+        time.sleep(1)
+        
+        # Bypass arming checks for SITL
+        log_message("INFO", "DRONE", "Setting ARMING_CHECK = 0 (bypass safety checks)")
+        vehicle.parameters['ARMING_CHECK'] = 0
+        time.sleep(1)
+        
+        # Verify settings
+        safety_enabled = vehicle.parameters.get('BRD_SAFETYENABLE', 1)
+        arming_check = vehicle.parameters.get('ARMING_CHECK', 1)
+        
+        log_message("SUCCESS", "DRONE", f"Safety disabled - Safety: {safety_enabled}, Arming: {arming_check}")
+        
+        return jsonify({
+            "status": "Safety switch disabled",
+            "safety_enabled": bool(safety_enabled),
+            "arming_check": bool(arming_check),
+            "is_armable": vehicle.is_armable
+        })
+        
+    except Exception as e:
+        log_message("ERROR", "DRONE", f"Safety disable error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 # Helper functions
 def get_drone_vehicle():
     """Get or create drone vehicle connection"""
@@ -1077,55 +1140,163 @@ def arm_and_takeoff(vehicle, target_elevation_above_user):
 
 def simple_takeoff_only(vehicle, target_altitude):
     """
-    Simple takeoff function for basic takeoff to specified altitude.
+    Improved takeoff function with better error handling and logging.
     Returns True if successful, False if failed.
     """
     try:
-        print("Basic pre-arm checks")
-        print(f"Target altitude: {target_altitude}m above ground level")
+        log_message("INFO", "DRONE", f"Starting takeoff sequence to {target_altitude}m")
+        print(f"🚁 Takeoff sequence initiated to {target_altitude}m")
         
-        # Don't try to arm until autopilot is ready
-        timeout = 60  # 60 second timeout
+        # Step 1: Check initial conditions
+        log_message("INFO", "DRONE", "Checking pre-takeoff conditions...")
+        print("📋 Checking pre-takeoff conditions...")
+        
+        if not vehicle:
+            log_message("ERROR", "DRONE", "No vehicle connection")
+            print("❌ No vehicle connection")
+            return False
+        
+        # Step 2: Check if vehicle is armable
+        print("🔍 Checking if vehicle is armable...")
+        armable_timeout = 30  # Reduced from 60 seconds
         start_time = time.time()
         
         while not vehicle.is_armable:
-            if time.time() - start_time > timeout:
-                print("Timeout waiting for vehicle to be armable")
+            elapsed = time.time() - start_time
+            if elapsed > armable_timeout:
+                log_message("ERROR", "DRONE", f"Vehicle not armable after {armable_timeout}s - check pre-arm conditions")
+                print(f"❌ Vehicle not armable after {armable_timeout}s")
+                
+                # Log specific issues
+                try:
+                    print(f"   GPS Fix: {vehicle.gps_0.fix_type}")
+                    print(f"   GPS Satellites: {vehicle.gps_0.satellites_visible}")
+                    print(f"   System Status: {vehicle.system_status.state}")
+                    print(f"   Mode: {vehicle.mode.name}")
+                    
+                    # Check safety switch
+                    safety_enabled = vehicle.parameters.get('BRD_SAFETYENABLE', 1)
+                    arming_check = vehicle.parameters.get('ARMING_CHECK', 1)
+                    print(f"   Safety Switch: {'Enabled' if safety_enabled else 'Disabled'}")
+                    print(f"   Arming Checks: {'Enabled' if arming_check else 'Disabled'}")
+                    
+                    if safety_enabled:
+                        print("   💡 Try running: python disable_safety.py")
+                    
+                except Exception as diag_error:
+                    print(f"   Could not read vehicle diagnostics: {diag_error}")
+                
                 return False
-            print(" Waiting for vehicle to initialise...")
+            
+            print(f"   Waiting for vehicle to be armable... ({elapsed:.1f}s)")
+            log_message("INFO", "DRONE", f"Waiting for armable status... ({elapsed:.1f}s)")
             time.sleep(1)
 
-        print("Arming motors")
-        # Copter should arm in GUIDED mode
+        log_message("SUCCESS", "DRONE", "Vehicle is armable")
+        print("✅ Vehicle is armable")
+
+        # Step 3: Set to GUIDED mode
+        print("🎮 Setting to GUIDED mode...")
+        log_message("INFO", "DRONE", "Setting vehicle to GUIDED mode")
         vehicle.mode = VehicleMode("GUIDED")
-        time.sleep(2)  # Wait for mode change
+        
+        # Wait for mode change with timeout
+        mode_timeout = 10
+        start_time = time.time()
+        while vehicle.mode.name != "GUIDED":
+            elapsed = time.time() - start_time
+            if elapsed > mode_timeout:
+                log_message("ERROR", "DRONE", f"Failed to switch to GUIDED mode after {mode_timeout}s")
+                print(f"❌ Failed to switch to GUIDED mode after {mode_timeout}s")
+                return False
+            print(f"   Waiting for GUIDED mode... Current: {vehicle.mode.name}")
+            time.sleep(0.5)
+        
+        log_message("SUCCESS", "DRONE", "Successfully switched to GUIDED mode")
+        print("✅ Successfully switched to GUIDED mode")
+        time.sleep(1)  # Give mode change time to settle
+
+        # Step 4: Arm the vehicle
+        print("🔧 Arming motors...")
+        log_message("INFO", "DRONE", "Arming vehicle motors")
         vehicle.armed = True
 
-        # Confirm vehicle armed before attempting to take off
-        timeout = 30
+        # Wait for arming with timeout
+        arm_timeout = 15  # Reduced from 30 seconds
         start_time = time.time()
         
         while not vehicle.armed:
-            if time.time() - start_time > timeout:
-                print("Timeout waiting for arming")
+            elapsed = time.time() - start_time
+            if elapsed > arm_timeout:
+                log_message("ERROR", "DRONE", f"Vehicle failed to arm after {arm_timeout}s")
+                print(f"❌ Vehicle failed to arm after {arm_timeout}s")
+                
+                # Try to get pre-arm error messages
+                try:
+                    print("   Pre-arm error details:")
+                    print(f"   - GPS Fix Type: {vehicle.gps_0.fix_type}")
+                    print(f"   - GPS Satellites: {vehicle.gps_0.satellites_visible}")
+                    print(f"   - System Status: {vehicle.system_status.state}")
+                    print("   💡 Check ArduPilot console for detailed PreArm messages")
+                except:
+                    print("   Could not read pre-arm diagnostics")
+                
                 return False
-            print(" Waiting for arming...")
-            time.sleep(1)
+            print(f"   Waiting for arming... ({elapsed:.1f}s)")
+            time.sleep(0.5)
 
-        print(f"Taking off to {target_altitude}m above ground!")
+        log_message("SUCCESS", "DRONE", "Vehicle armed successfully")
+        print("✅ Vehicle armed successfully")
+
+        # Step 5: Initiate takeoff
+        print(f"🚀 Initiating takeoff to {target_altitude}m...")
+        log_message("INFO", "DRONE", f"Sending takeoff command to {target_altitude}m")
         vehicle.simple_takeoff(target_altitude)
 
-        # Wait until the vehicle reaches target altitude
+        # Step 6: Monitor takeoff progress
+        print("📈 Monitoring takeoff progress...")
+        takeoff_timeout = 60  # 1 minute for takeoff
+        start_time = time.time()
+        last_altitude = 0
+        
         while True:
-            current_altitude = vehicle.location.global_relative_frame.alt
-            print(f" Altitude: {current_altitude}m")
+            elapsed = time.time() - start_time
+            
+            # Check timeout
+            if elapsed > takeoff_timeout:
+                log_message("ERROR", "DRONE", f"Takeoff timeout after {takeoff_timeout}s")
+                print(f"❌ Takeoff timeout after {takeoff_timeout}s")
+                return False
+            
+            # Get current altitude
+            try:
+                current_altitude = vehicle.location.global_relative_frame.alt or 0
+            except:
+                current_altitude = 0
+            
+            # Check if vehicle is still armed
+            if not vehicle.armed:
+                log_message("ERROR", "DRONE", "Vehicle disarmed during takeoff")
+                print("❌ Vehicle disarmed during takeoff")
+                return False
+            
+            # Log progress every 2 seconds
+            if elapsed % 2 < 0.5 or current_altitude != last_altitude:
+                print(f"   [{elapsed:5.1f}s] Altitude: {current_altitude:.2f}m (target: {target_altitude}m)")
+                log_message("INFO", "DRONE", f"Takeoff progress: {current_altitude:.2f}m/{target_altitude}m")
+                last_altitude = current_altitude
+            
+            # Check if target altitude reached (with 5% tolerance)
             if current_altitude >= target_altitude * 0.95:
-                print(f"Reached target altitude ({target_altitude}m)")
+                log_message("SUCCESS", "DRONE", f"Takeoff completed! Reached {current_altitude:.2f}m")
+                print(f"🎉 Takeoff successful! Reached {current_altitude:.2f}m")
                 return True
-            time.sleep(1)
+            
+            time.sleep(0.5)  # Check every 0.5 seconds
             
     except Exception as e:
-        print(f"Takeoff failed: {e}")
+        log_message("ERROR", "DRONE", f"Takeoff exception: {str(e)}")
+        print(f"❌ Takeoff failed with exception: {str(e)}")
         return False
 
 def update_gimbal_for_tracking():

@@ -169,6 +169,16 @@ button:disabled, .button:disabled {
   color: white;
 }
 
+.safety-btn {
+  background: linear-gradient(45deg, #ff9800, #f57c00);
+  color: white;
+}
+
+.safety-btn:hover {
+  background: linear-gradient(45deg, #f57c00, #ef6c00);
+  transform: translateY(-1px);
+}
+
 /* Status Displays */
 .status-item {
   background: white;

@@ -81,68 +81,89 @@ function updateBasicControlStatus(message, className) {
 // Live status update function
 function updateLiveStatus() {
     fetch("http://localhost:3000/status")
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP error! status: ${res.status}`);
+            }
+            return res.json();
+        })
         .then(data => {
+            console.log("Status update received:", data); // Debug log
+            
             // Update user location display
-            if (data.user_has_location) {
-                document.getElementById("userLocation").textContent = 
-                    `${data.user_location.lat.toFixed(6)}, ${data.user_location.lon.toFixed(6)}`;
-            } else {
-                document.getElementById("userLocation").textContent = "Not available";
+            const userLocationElement = document.getElementById("userLocation");
+            if (userLocationElement) {
+                if (data.user_has_location) {
+                    userLocationElement.textContent = 
+                        `${data.user_location.lat.toFixed(6)}, ${data.user_location.lon.toFixed(6)}`;
+                } else {
+                    userLocationElement.textContent = "Not available";
+                }
             }
 
             // Update GPS source display
             const gpsSourceElement = document.getElementById("gpsSource");
-            if (data.gps_source && data.gps_status) {
-                gpsSourceElement.textContent = data.gps_status;
-                
-                // Color code based on GPS health
-                gpsSourceElement.className = '';
-                if (data.gps_health === 'excellent') {
-                    gpsSourceElement.style.color = '#27ae60'; // Green
-                } else if (data.gps_health === 'good') {
-                    gpsSourceElement.style.color = '#f39c12'; // Orange
-                } else if (data.gps_health === 'poor') {
-                    gpsSourceElement.style.color = '#e74c3c'; // Red
-                } else if (data.gps_health === 'fair') {
-                    gpsSourceElement.style.color = '#3498db'; // Blue
-                } else if (data.gps_health === 'manual') {
-                    gpsSourceElement.style.color = '#9b59b6'; // Purple
+            if (gpsSourceElement) {
+                if (data.gps_source && data.gps_status) {
+                    gpsSourceElement.textContent = data.gps_status;
+                    
+                    // Color code based on GPS health
+                    gpsSourceElement.className = '';
+                    if (data.gps_health === 'excellent') {
+                        gpsSourceElement.style.color = '#27ae60'; // Green
+                    } else if (data.gps_health === 'good') {
+                        gpsSourceElement.style.color = '#f39c12'; // Orange
+                    } else if (data.gps_health === 'poor') {
+                        gpsSourceElement.style.color = '#e74c3c'; // Red
+                    } else if (data.gps_health === 'fair') {
+                        gpsSourceElement.style.color = '#3498db'; // Blue
+                    } else if (data.gps_health === 'manual') {
+                        gpsSourceElement.style.color = '#9b59b6'; // Purple
+                    } else {
+                        gpsSourceElement.style.color = '#7f8c8d'; // Gray
+                    }
                 } else {
-                    gpsSourceElement.style.color = '#7f8c8d'; // Gray
+                    gpsSourceElement.textContent = "No GPS source";
+                    gpsSourceElement.style.color = '#7f8c8d';
                 }
-            } else {
-                gpsSourceElement.textContent = "No GPS source";
-                gpsSourceElement.style.color = '#7f8c8d';
             }
 
             // Update drone location display
-            if (data.drone_has_location) {
-                document.getElementById("droneLocation").textContent = 
-                    `${data.drone_location.lat.toFixed(6)}, ${data.drone_location.lon.toFixed(6)}`;
-            } else {
-                document.getElementById("droneLocation").textContent = "Not available";
+            const droneLocationElement = document.getElementById("droneLocation");
+            if (droneLocationElement) {
+                if (data.drone_has_location) {
+                    droneLocationElement.textContent = 
+                        `${data.drone_location.lat.toFixed(6)}, ${data.drone_location.lon.toFixed(6)}`;
+                } else {
+                    droneLocationElement.textContent = "Not available";
+                }
             }
 
             // Update distance display
-            if (data.user_has_location && data.drone_has_location && data.distance_meters > 0) {
-                document.getElementById("distance").textContent = 
-                    `${data.distance_meters}m (${data.distance_feet}ft)`;
-            } else {
-                document.getElementById("distance").textContent = "Not calculated";
+            const distanceElement = document.getElementById("distance");
+            if (distanceElement) {
+                if (data.user_has_location && data.drone_has_location && data.distance_meters > 0) {
+                    distanceElement.textContent = 
+                        `${data.distance_meters}m (${data.distance_feet}ft)`;
+                } else {
+                    distanceElement.textContent = "Not calculated";
+                }
             }
 
             // Update follow mode display
-            const followModeText = data.follow_mode ? 
-                `Active (${data.target_elevation}m elevation, ${data.target_distance}m distance)` : 
-                "Inactive";
-            document.getElementById("followMode").textContent = followModeText;
+            const followModeElement = document.getElementById("followMode");
+            if (followModeElement) {
+                const followModeText = data.follow_mode ? 
+                    `Active (${data.target_elevation}m elevation, ${data.target_distance}m distance)` : 
+                    "Inactive";
+                followModeElement.textContent = followModeText;
+            }
             
             // Update camera status and toggle button
             const cameraStatus = document.getElementById('cameraStatus');
             const toggleCameraBtn = document.getElementById('toggleCameraBtn');
             
-            if (data.camera_enabled !== undefined) {
+            if (cameraStatus && data.camera_enabled !== undefined) {
                 if (data.camera_enabled) {
                     if (data.camera_running) {
                         cameraStatus.textContent = '📹 Live camera stream active';
@@ -151,11 +172,11 @@ function updateLiveStatus() {
                         cameraStatus.textContent = '📹 Camera enabled but not running';
                         cameraStatus.className = 'status-warning';
                     }
-                    toggleCameraBtn.textContent = '📹 Disable Camera';
+                    if (toggleCameraBtn) toggleCameraBtn.textContent = '📹 Disable Camera';
                 } else {
                     cameraStatus.textContent = '📹 Camera disabled';
                     cameraStatus.className = 'status-info';
-                    toggleCameraBtn.textContent = '📹 Enable Camera';
+                    if (toggleCameraBtn) toggleCameraBtn.textContent = '📹 Enable Camera';
                 }
             }
 
@@ -166,7 +187,13 @@ function updateLiveStatus() {
             updateGoproStatus();
         })
         .catch(error => {
-            // Silent error handling for status updates
+            console.error("Status update error:", error);
+            // Show connection error in the UI
+            const droneLocationElement = document.getElementById("droneLocation");
+            if (droneLocationElement) {
+                droneLocationElement.textContent = "Connection Error";
+                droneLocationElement.style.color = '#e74c3c';
+            }
         });
 }
 
@@ -350,8 +377,15 @@ function updateDroneMetrics(metrics) {
 // GoPro status update function
 function updateGoproStatus() {
     fetch('http://localhost:3000/gopro/status')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
+            console.log("GoPro status update received:", data); // Debug log
+            
             const goproStatus = document.getElementById('goproStatus');
             const recordingStatus = document.getElementById('recordingStatus');
             const autoTrackStatus = document.getElementById('autoTrackStatus');
@@ -359,36 +393,46 @@ function updateGoproStatus() {
             const tiltValue = document.getElementById('tiltValue');
             
             // Update GoPro connection status
-            if (data.gopro_enabled) {
-                goproStatus.textContent = `📷 GoPro Connected - ${data.gopro_ip}`;
-                goproStatus.className = 'status-success';
-                enableGoproControls(true);
-            } else {
-                goproStatus.textContent = '📷 GoPro Disconnected';
-                goproStatus.className = 'status-info';
-                enableGoproControls(false);
+            if (goproStatus) {
+                if (data.gopro_enabled) {
+                    goproStatus.textContent = `📷 GoPro Connected - ${data.gopro_ip}`;
+                    goproStatus.className = 'status-success';
+                    enableGoproControls(true);
+                } else {
+                    goproStatus.textContent = '📷 GoPro Disconnected';
+                    goproStatus.className = 'status-info';
+                    enableGoproControls(false);
+                }
             }
             
             // Update recording status
-            if (data.gopro_recording) {
-                recordingStatus.textContent = '🔴 Recording';
-                recordingStatus.className = 'status-recording';
-            } else {
-                recordingStatus.textContent = '⚫ Not Recording';
-                recordingStatus.className = '';
+            if (recordingStatus) {
+                if (data.gopro_recording) {
+                    recordingStatus.textContent = '🔴 Recording';
+                    recordingStatus.className = 'status-recording';
+                } else {
+                    recordingStatus.textContent = '⚫ Not Recording';
+                    recordingStatus.className = '';
+                }
             }
             
             // Update auto-tracking status
-            if (data.auto_tracking_enabled) {
-                autoTrackStatus.textContent = '🎯 Auto-Tracking Enabled';
-                autoTrackStatus.className = 'status-success';
-                document.getElementById('enableAutoTrackBtn').disabled = true;
-                document.getElementById('disableAutoTrackBtn').disabled = false;
-            } else {
-                autoTrackStatus.textContent = '🎯 Auto-Tracking Disabled';
-                autoTrackStatus.className = '';
-                document.getElementById('enableAutoTrackBtn').disabled = false;
-                document.getElementById('disableAutoTrackBtn').disabled = true;
+            if (autoTrackStatus) {
+                if (data.auto_tracking_enabled) {
+                    autoTrackStatus.textContent = '🎯 Auto-Tracking Enabled';
+                    autoTrackStatus.className = 'status-success';
+                    const enableBtn = document.getElementById('enableAutoTrackBtn');
+                    const disableBtn = document.getElementById('disableAutoTrackBtn');
+                    if (enableBtn) enableBtn.disabled = true;
+                    if (disableBtn) disableBtn.disabled = false;
+                } else {
+                    autoTrackStatus.textContent = '🎯 Auto-Tracking Disabled';
+                    autoTrackStatus.className = '';
+                    const enableBtn = document.getElementById('enableAutoTrackBtn');
+                    const disableBtn = document.getElementById('disableAutoTrackBtn');
+                    if (enableBtn) enableBtn.disabled = false;
+                    if (disableBtn) disableBtn.disabled = true;
+                }
             }
             
             // Update gimbal tilt display
@@ -398,33 +442,51 @@ function updateGoproStatus() {
             }
         })
         .catch(error => {
-            // Silent error handling
+            console.error("GoPro status error:", error);
+            const goproStatus = document.getElementById('goproStatus');
+            if (goproStatus) {
+                goproStatus.textContent = '📷 GoPro Status Error';
+                goproStatus.className = 'status-error';
+            }
         });
 }
 
 // System logs update function
 function updateSystemLogs() {
     fetch("http://localhost:3000/logs")
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP error! status: ${res.status}`);
+            }
+            return res.json();
+        })
         .then(data => {
+            console.log("Logs update received:", data.logs ? data.logs.length : 0, "logs"); // Debug log
+            
             const logs = data.logs || [];
-            if (logs.length > 0) {
+            if (logs.length > 0 && logDisplay) {
                 logDisplay.innerHTML = '';
                 logs.forEach(log => {
                     const logElement = document.createElement('div');
-                    logElement.className = `log-message ${log.level} ${log.component}`;
+                    logElement.className = `log-message ${log.level.toLowerCase()} ${log.component.toLowerCase()}`;
                     logElement.textContent = `[${log.timestamp}] ${log.level} - ${log.component}: ${log.message}`;
                     logDisplay.appendChild(logElement);
                 });
                 
                 // Auto-scroll to bottom if enabled
-                if (autoScrollLogs.checked) {
+                if (autoScrollLogs && autoScrollLogs.checked) {
                     logDisplay.scrollTop = logDisplay.scrollHeight;
                 }
+            } else if (logDisplay) {
+                // Show that we're connected but no logs yet
+                logDisplay.innerHTML = '<div class="log-message info">Connected to server - waiting for logs...</div>';
             }
         })
         .catch(error => {
-            // Silent error handling for log updates
+            console.error("Log update error:", error);
+            if (logDisplay) {
+                logDisplay.innerHTML = `<div class="log-message error">Error loading logs: ${error.message}</div>`;
+            }
         });
 }
 
@@ -478,22 +540,43 @@ function toggleCamera() {
 }
 
 function initializeLiveStream() {
-    // Laptop camera functionality disabled - using GoPro for human detection
-    const cameraFeed = document.getElementById('cameraFeed');
-    const cameraPlaceholder = document.getElementById('cameraPlaceholder');
-    const cameraStatus = document.getElementById('cameraStatus');
-    const toggleBtn = document.getElementById('toggleCameraBtn');
+    // GoPro integration is now the primary camera system
+    const goproFeedContainer = document.getElementById('goproFeedContainer');
+    const goproStatus = document.getElementById('goproStatus');
+    const streamStatus = document.getElementById('streamStatus');
+    const detectionStatus = document.getElementById('goproDetectionStatus');
     
-    cameraActive = false;
+    // Initialize GoPro feed container (hidden by default)
+    if (goproFeedContainer) {
+        goproFeedContainer.style.display = 'none';
+        console.log("GoPro feed container initialized");
+    } else {
+        console.log("Warning: goproFeedContainer element not found");
+    }
     
-    cameraFeed.style.display = 'none';
-    cameraPlaceholder.style.display = 'block';
-    cameraPlaceholder.innerHTML = '<p>📷 Human detection now uses GoPro feed<br>Start GoPro streaming to detect humans</p>';
+    // Set initial status messages
+    if (goproStatus) {
+        goproStatus.textContent = '📷 GoPro Disconnected';
+        console.log("GoPro status initialized");
+    } else {
+        console.log("Warning: goproStatus element not found");
+    }
     
-    // Update status and button
-    cameraStatus.textContent = '📷 Human detection moved to GoPro feed';
-    cameraStatus.className = 'status-info';
-    toggleBtn.textContent = '� GoPro Detection Only';
+    if (streamStatus) {
+        streamStatus.textContent = '� Stream Offline';
+        console.log("Stream status initialized");
+    } else {
+        console.log("Warning: streamStatus element not found");
+    }
+    
+    if (detectionStatus) {
+        detectionStatus.textContent = '🎯 Detection Ready (GoPro Feed)';
+        console.log("Detection status initialized");
+    } else {
+        console.log("Warning: detectionStatus element not found");
+    }
+    
+    console.log("Live stream initialization completed - GoPro system ready");
 }
 
 function startCameraFeed() {
@@ -1335,6 +1418,44 @@ function droneLand() {
                 landBtn.disabled = false;
             });
     }
+}
+
+function disableSafety() {
+    console.log("Disabling safety switch...");
+    updateBasicControlStatus("⏳ Disabling safety switch for SITL...", "status-sending");
+    
+    const disableSafetyBtn = document.getElementById('disableSafetyBtn');
+    if (disableSafetyBtn) disableSafetyBtn.disabled = true;
+    
+    fetch('http://localhost:3000/drone/disable_safety', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            updateBasicControlStatus(`❌ Safety disable failed: ${data.error}`, "status-error");
+            console.error('Safety disable error:', data.error);
+        } else {
+            updateBasicControlStatus(`✅ Safety disabled - Armable: ${data.is_armable}`, "status-success");
+            console.log('Safety disabled:', data);
+            
+            // Show success message with details
+            const safetyStatus = data.safety_enabled ? 'Enabled' : 'Disabled';
+            const armingStatus = data.arming_check ? 'Enabled' : 'Disabled';
+            
+            alert(`Safety Switch: ${safetyStatus}\nArming Checks: ${armingStatus}\nVehicle Armable: ${data.is_armable}\n\nYou should now be able to takeoff!`);
+        }
+    })
+    .catch(error => {
+        updateBasicControlStatus(`❌ Safety disable error: ${error.message}`, "status-error");
+        console.error('Safety disable error:', error);
+    })
+    .finally(() => {
+        if (disableSafetyBtn) disableSafetyBtn.disabled = false;
+    });
 }
 
 // Initialization function - runs when DOM is loaded

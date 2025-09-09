@@ -253,4 +253,8 @@ def get_current_location():
         return (0, 0)
     
     loc = v.location.global_frame
-    return loc.lat, loc.lon
+    # Handle None values when GPS doesn't have a fix
+    lat = loc.lat if loc.lat is not None else 0
+    lon = loc.lon if loc.lon is not None else 0
+    
+    return lat, lon
